@@ -36,6 +36,9 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "temp_carpi_backend",
+    "temp_carpi_original",
+    "temp_carpi_tienda"
   ]
 }
