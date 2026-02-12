@@ -42,13 +42,17 @@ export async function updateSession(request: NextRequest) {
         }
 
         // Check role from profiles
-        const { data: profile } = await supabase
+        let { data: profile } = await supabase
             .from('profiles')
             .select('role')
             .eq('id', user.id)
             .single()
 
-        const role = profile?.role
+        // TEMPORAL BYPASS para desarrollo: Forzar admin para admin@carpi.com
+        let role = profile?.role
+        if (user.email === 'admin@carpi.com') {
+            role = 'admin'
+        }
 
         if (request.nextUrl.pathname.startsWith('/admin/stock') && role !== 'gerente' && role !== 'admin') {
             return NextResponse.redirect(new URL('/admin', request.url))

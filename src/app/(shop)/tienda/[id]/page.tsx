@@ -57,7 +57,7 @@ export default function ProductDetailPage() {
     );
 
     return (
-        <div className="min-h-screen bg-white pt-24 capitalize">
+        <div className="min-h-screen bg-white pt-24 text-black">
             <div className="max-w-7xl mx-auto px-6 py-12">
                 <button
                     onClick={() => router.back()}
@@ -72,7 +72,7 @@ export default function ProductDetailPage() {
                     <div className="space-y-4">
                         <div className="aspect-[4/5] bg-gray-100 overflow-hidden">
                             <img
-                                src={product.image_url || "/images/placeholder.jpg"}
+                                src={product.image_url || "/images/prod/fenix.jpg"}
                                 alt={product.name}
                                 className="w-full h-full object-cover"
                             />
@@ -107,8 +107,8 @@ export default function ProductDetailPage() {
                                 onClick={handleAddToCart}
                                 disabled={product.stock <= 0}
                                 className={`w-full py-5 text-xs font-bold uppercase tracking-[0.3em] transition-all duration-500 flex items-center justify-center gap-3 ${added
-                                        ? "bg-green-600 text-white"
-                                        : "bg-black text-white hover:bg-gray-800"
+                                    ? "bg-green-600 text-white"
+                                    : "bg-black text-white hover:bg-gray-800"
                                     } disabled:bg-gray-200 disabled:text-gray-400`}
                             >
                                 {added ? (

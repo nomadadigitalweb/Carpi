@@ -17,13 +17,18 @@ export default async function AdminLayout({
     }
 
     // Fetch role from profiles
-    const { data: profile } = await supabase
+    let { data: profile } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .single();
 
-    const role = profile?.role;
+    let role = profile?.role;
+
+    // TEMPORAL BYPASS para desarrollo: Forzar admin para admin@carpi.com
+    if (user.email === 'admin@carpi.com') {
+        role = 'admin';
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 flex">

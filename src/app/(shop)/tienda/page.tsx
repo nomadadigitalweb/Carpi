@@ -33,7 +33,7 @@ export default function ShopPage() {
         : products.filter(p => p.category === filter);
 
     return (
-        <div className="min-h-screen bg-white pt-24">
+        <div className="min-h-screen bg-white pt-24 text-black">
             <div className="max-w-7xl mx-auto px-6 py-12">
                 {/* Header Tienda */}
                 <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
@@ -70,7 +70,7 @@ export default function ShopPage() {
                             <div key={product.id} className="group flex flex-col h-full">
                                 <a href={`/tienda/${product.id}`} className="block relative aspect-[4/5] bg-gray-100 overflow-hidden mb-6">
                                     <img
-                                        src={product.image_url || "/images/placeholder.jpg"}
+                                        src={product.image_url || "/images/prod/fenix.jpg"}
                                         alt={product.name}
                                         className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
                                     />
