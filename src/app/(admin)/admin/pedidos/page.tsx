@@ -30,11 +30,11 @@ export default function OrdersPage() {
         setUpdatingId(id);
         const { error } = await supabase
             .from('orders')
-            .update({ tracking_number, status: 'shipped' })
+            .update({ tracking_number, status_envio: 'despachado' })
             .eq('id', id);
 
         if (!error) {
-            setOrders(prev => prev.map(o => o.id === id ? { ...o, tracking_number, status: 'shipped' } : o));
+            setOrders(prev => prev.map(o => o.id === id ? { ...o, tracking_number, status_envio: 'despachado' } : o));
         }
         setUpdatingId(null);
     }
@@ -88,10 +88,10 @@ export default function OrdersPage() {
                                         <div>
                                             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Estado</p>
                                             <div className="flex items-center gap-2">
-                                                {order.status === 'pending' && <Clock className="w-3 h-3 text-orange-500" />}
-                                                {order.status === 'shipped' && <Truck className="w-3 h-3 text-blue-500" />}
-                                                {order.status === 'delivered' && <CheckCircle className="w-3 h-3 text-green-500" />}
-                                                <span className="text-[10px] font-bold uppercase tracking-widest">{order.status}</span>
+                                                {order.status_envio === 'preparando' && <Clock className="w-3 h-3 text-orange-500" />}
+                                                {order.status_envio === 'despachado' && <Truck className="w-3 h-3 text-blue-500" />}
+                                                {order.status_envio === 'entregado' && <CheckCircle className="w-3 h-3 text-green-500" />}
+                                                <span className="text-[10px] font-bold uppercase tracking-widest">{order.status_envio}</span>
                                             </div>
                                         </div>
                                         <div>
@@ -118,7 +118,7 @@ export default function OrdersPage() {
                                             {updatingId === order.id ? <div className="animate-spin h-4 w-4 border-b-2 border-white"></div> : <Save className="w-4 h-4" />}
                                         </button>
                                     </div>
-                                    <p className="text-[8px] text-gray-400 mt-2 uppercase tracking-tight italic">Al guardar, el estado cambiará a 'Enviado'</p>
+                                    <p className="text-[8px] text-gray-400 mt-2 uppercase tracking-tight italic">Al guardar, el estado de envío cambiará a 'Despachado'</p>
                                 </div>
                             </div>
                         </div>

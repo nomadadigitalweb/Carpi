@@ -7,8 +7,10 @@ export default function AdminHeader({ userEmail, role }: { userEmail?: string, r
 
     const getPageTitle = () => {
         if (pathname === "/admin") return "Dashboard General";
+        if (pathname.includes("/campanas-marketing")) return "Campañas de Marketing";
         if (pathname.includes("/stock")) return "Gestión de Inventario";
         if (pathname.includes("/pedidos")) return "Control de Pedidos";
+        if (pathname.includes("/sync")) return "Sincronización Xubio";
         return "Panel de Administración";
     };
 

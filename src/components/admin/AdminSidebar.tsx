@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, ShoppingBag, LayoutDashboard, Settings, LogOut } from "lucide-react";
+import { Package, ShoppingBag, LayoutDashboard, RefreshCw, LogOut, FileText, BarChart3, Megaphone } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
 
@@ -44,7 +44,7 @@ export default function AdminSidebar({ role }: { role?: string }) {
                     <span>Dashboard</span>
                 </Link>
 
-                {(role === 'gerente' || role === 'admin') && (
+                {(role === 'encargado_ventas' || role === 'admin_carpi') && (
                     <Link
                         href="/admin/stock"
                         className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive("/admin/stock")
@@ -57,7 +57,7 @@ export default function AdminSidebar({ role }: { role?: string }) {
                     </Link>
                 )}
 
-                {(role === 'gerente' || role === 'logistica' || role === 'admin') && (
+                {(role === 'encargado_ventas' || role === 'gestor_financiero' || role === 'admin_carpi') && (
                     <Link
                         href="/admin/pedidos"
                         className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive("/admin/pedidos")
@@ -67,6 +67,60 @@ export default function AdminSidebar({ role }: { role?: string }) {
                     >
                         <ShoppingBag size={18} />
                         <span>Pedidos</span>
+                    </Link>
+                )}
+
+                {(role === 'encargado_ventas' || role === 'gestor_financiero' || role === 'admin_carpi') && (
+                    <Link
+                        href="/admin/sync"
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive("/admin/sync")
+                            ? "bg-white/10 text-white"
+                            : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                            }`}
+                    >
+                        <RefreshCw size={18} />
+                        <span>Sync Xubio</span>
+                    </Link>
+                )}
+
+                {(role === 'encargado_ventas' || role === 'admin_carpi') && (
+                    <Link
+                        href="/admin/blog"
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive("/admin/blog")
+                            ? "bg-white/10 text-white"
+                            : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                            }`}
+                    >
+                        <FileText size={18} />
+                        <span>Blog</span>
+                    </Link>
+                )}
+
+                <p className="px-3 pt-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Marketing</p>
+
+                {(role === 'encargado_ventas' || role === 'gestor_financiero' || role === 'admin_carpi') && (
+                    <Link
+                        href="/admin/analytics"
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive("/admin/analytics")
+                            ? "bg-white/10 text-white"
+                            : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                            }`}
+                    >
+                        <BarChart3 size={18} />
+                        <span>Análisis de Datos</span>
+                    </Link>
+                )}
+
+                {(role === 'encargado_ventas' || role === 'gestor_financiero' || role === 'admin_carpi') && (
+                    <Link
+                        href="/admin/campanas-marketing"
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive("/admin/campanas-marketing")
+                            ? "bg-white/10 text-white"
+                            : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                            }`}
+                    >
+                        <Megaphone size={18} />
+                        <span>Campañas Marketing</span>
                     </Link>
                 )}
             </nav>

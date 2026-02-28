@@ -1,6 +1,7 @@
 import { CartProvider } from "@/context/CartContext";
 import Link from "next/link";
 import { ShoppingCart } from "lucide-react";
+import { AnalyticsTracker } from "@/lib/analytics";
 
 export default function ShopLayout({
     children,
@@ -46,6 +47,7 @@ export default function ShopLayout({
                     </Link>
                 </div>
             </header>
+            <AnalyticsTracker />
             <main>
                 {children}
             </main>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { trackAddToCart } from "@/lib/analytics";
 
 interface CartItem {
     id: string;
@@ -42,6 +43,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }, [cart]);
 
     const addToCart = (item: CartItem) => {
+        trackAddToCart(item.id, item.name, item.quantity);
         setCart((prev) => {
             const existing = prev.find((i) => i.id === item.id);
             if (existing) {

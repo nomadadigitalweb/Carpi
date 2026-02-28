@@ -2,6 +2,10 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+type AppRole = 'admin_carpi' | 'gestor_financiero' | 'encargado_ventas' | 'fabricante' | 'usuario'
+
+const staffRoles: AppRole[] = ['admin_carpi', 'gestor_financiero', 'encargado_ventas']
+
 export async function updateSession(request: NextRequest) {
     let response = NextResponse.next({
         request: {
@@ -36,43 +40,55 @@ export async function updateSession(request: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser()
 
-    if (request.nextUrl.pathname.startsWith('/admin')) {
-        if (!user) {
-            return NextResponse.redirect(new URL('/login', request.url))
-        }
+    let role: AppRole | null = null
 
-        // Check role from profiles
-        let { data: profile } = await supabase
+    if (user) {
+        const { data: profile } = await supabase
             .from('profiles')
             .select('role')
             .eq('id', user.id)
             .single()
 
-        // TEMPORAL BYPASS para desarrollo: Forzar admin para admin@carpi.com
-        let role = profile?.role
-        if (user.email === 'admin@carpi.com') {
-            role = 'admin'
+        role = (profile?.role as AppRole | undefined) ?? null
+    }
+
+    if (request.nextUrl.pathname.startsWith('/admin')) {
+        if (!user || !role || !staffRoles.includes(role)) {
+            return NextResponse.redirect(new URL('/', request.url))
+        }
+    }
+
+    if (request.nextUrl.pathname.startsWith('/dashboard')) {
+        if (!user) {
+            return NextResponse.redirect(new URL('/login?next=/dashboard', request.url))
         }
 
-        if (request.nextUrl.pathname.startsWith('/admin/stock') && role !== 'gerente' && role !== 'admin') {
-            return NextResponse.redirect(new URL('/admin', request.url))
+        if (role !== 'fabricante') {
+            return NextResponse.redirect(new URL('/', request.url))
+        }
+    }
+
+    if (request.nextUrl.pathname.startsWith('/mi-cuenta')) {
+        if (!user) {
+            return NextResponse.redirect(new URL('/login?next=/mi-cuenta', request.url))
         }
 
-        if (request.nextUrl.pathname.startsWith('/admin/pedidos') && role !== 'gerente' && role !== 'logistica' && role !== 'admin') {
-            return NextResponse.redirect(new URL('/admin', request.url))
-        }
-
-        // Explicit protection for base /admin if needed, or allow all authenticated users
-        // Assuming /admin base is allowed for anyone with a profile who passed the login
-        // but maybe we want to restrict it to admin/gerente/logistica only?
-        if (role !== 'admin' && role !== 'gerente' && role !== 'logistica') {
+        if (role && role !== 'usuario') {
             return NextResponse.redirect(new URL('/', request.url))
         }
     }
 
     // Redirect logged in users away from login
     if (request.nextUrl.pathname === '/login' && user) {
-        return NextResponse.redirect(new URL('/admin', request.url))
+        if (role === 'fabricante') {
+            return NextResponse.redirect(new URL('/dashboard', request.url))
+        }
+
+        if (role && staffRoles.includes(role)) {
+            return NextResponse.redirect(new URL('/admin', request.url))
+        }
+
+        return NextResponse.redirect(new URL('/mi-cuenta', request.url))
     }
 
     return response

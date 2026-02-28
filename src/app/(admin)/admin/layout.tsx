@@ -23,11 +23,10 @@ export default async function AdminLayout({
         .eq('id', user.id)
         .single();
 
-    let role = profile?.role;
+    const role = profile?.role;
 
-    // TEMPORAL BYPASS para desarrollo: Forzar admin para admin@carpi.com
-    if (user.email === 'admin@carpi.com') {
-        role = 'admin';
+    if (!role || !['admin_carpi', 'gestor_financiero', 'encargado_ventas'].includes(role)) {
+        redirect("/");
     }
 
     return (

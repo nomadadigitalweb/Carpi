@@ -40,7 +40,7 @@ async function createAdmin() {
         console.log('ID del usuario:', data.user?.id);
         console.log('\n--- IMPORTANTE ---');
         console.log('Ahora debes ir al SQL Editor de Supabase y ejecutar:');
-        console.log(`UPDATE public.profiles SET role = 'admin' WHERE id = '${data.user?.id}';`);
+        console.log(`UPDATE public.profiles SET role = 'admin_carpi' WHERE id = '${data.user?.id}';`);
     }
 }
 
