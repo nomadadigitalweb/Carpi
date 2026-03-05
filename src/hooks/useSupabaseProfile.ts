@@ -147,9 +147,9 @@ export function useSupabaseProfile() {
       if (resolvedProfile.parent_id) {
         const { data: parent, error: parentError } = await supabase
           .from("profiles")
-          .select("id,lista_precio_id")
+          .select("id,full_name,lista_precio_id")
           .eq("id", resolvedProfile.parent_id)
-          .maybeSingle<Pick<Profile, "id" | "lista_precio_id">>();
+          .maybeSingle<Pick<Profile, "id" | "full_name" | "lista_precio_id">>();
 
         if (parentError) {
           const parentErrorMessage = parentError.message ?? "";
