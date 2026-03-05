@@ -109,11 +109,7 @@ export default function ShopCatalogClient({ products }: { products: ProductView[
                     <ShoppingBag className="w-4 h-4" />
                     Agregar al pedido
                   </button>
-                ) : (
-                  <p className="mt-auto text-[10px] uppercase tracking-[0.2em] text-gray-500 font-bold py-3 border border-gray-200 text-center">
-                    Inicia sesión para armar pedidos
-                  </p>
-                )}
+                ) : null}
               </div>
             </div>
           ))}

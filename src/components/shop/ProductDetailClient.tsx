@@ -112,11 +112,7 @@ export default function ProductDetailClient({ product }: { product: ProductDetai
                     </>
                   )}
                 </button>
-              ) : (
-                <p className="w-full py-5 text-center border border-gray-200 text-xs font-bold uppercase tracking-[0.25em] text-gray-500">
-                  Inicia sesión para armar pedidos
-                </p>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
