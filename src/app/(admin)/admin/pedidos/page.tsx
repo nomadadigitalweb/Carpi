@@ -12,12 +12,19 @@ const ORDER_STATUS_OPTIONS = [
     { value: 'cancelado', label: 'Cancelado' },
 ];
 
+const SHIPPING_STATUS_OPTIONS = [
+    { value: 'preparando', label: 'Preparando' },
+    { value: 'despachado', label: 'Despachado' },
+    { value: 'entregado', label: 'Entregado' },
+];
+
 export default function OrdersPage() {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [updatingId, setUpdatingId] = useState<string | null>(null);
     const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+    const [updatingShippingId, setUpdatingShippingId] = useState<string | null>(null);
     const [invoicingId, setInvoicingId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -56,6 +63,27 @@ export default function OrdersPage() {
             alert(payload.error ?? 'No se pudo actualizar tracking');
         }
         setUpdatingId(null);
+    }
+
+    async function handleUpdateShippingStatus(id: string, status_envio: string) {
+        setUpdatingShippingId(id);
+        const response = await fetch(`/api/admin/orders/${id}/tracking`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status_envio }),
+        });
+
+        const payload = (await response.json()) as { ok?: boolean; error?: string };
+
+        if (response.ok && payload.ok) {
+            setOrders(prev => prev.map(o => o.id === id ? { ...o, status_envio } : o));
+        } else {
+            alert(payload.error ?? 'No se pudo actualizar estado de envío');
+        }
+
+        setUpdatingShippingId(null);
     }
 
     async function handleUpdateOrderStatus(id: string, status: string) {
@@ -167,11 +195,26 @@ export default function OrdersPage() {
                                             </div>
                                         <div>
                                             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Estado</p>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                                 {order.status_envio === 'preparando' && <Clock className="w-3 h-3 text-orange-500" />}
                                                 {order.status_envio === 'despachado' && <Truck className="w-3 h-3 text-blue-500" />}
                                                 {order.status_envio === 'entregado' && <CheckCircle className="w-3 h-3 text-green-500" />}
                                                 <span className="text-[10px] font-bold uppercase tracking-widest">{order.status_envio}</span>
+                                                <select
+                                                    className="bg-gray-50 border border-gray-200 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                                                    value={order.status_envio ?? 'preparando'}
+                                                    onChange={(e) => handleUpdateShippingStatus(order.id, e.target.value)}
+                                                    disabled={updatingShippingId === order.id}
+                                                >
+                                                    {SHIPPING_STATUS_OPTIONS.map((option) => (
+                                                        <option key={option.value} value={option.value}>
+                                                            {option.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {updatingShippingId === order.id && (
+                                                    <div className="animate-spin h-3 w-3 border-b-2 border-black" />
+                                                )}
                                             </div>
                                         </div>
                                         <div>
@@ -206,7 +249,7 @@ export default function OrdersPage() {
                                             {updatingId === order.id ? <div className="animate-spin h-4 w-4 border-b-2 border-white"></div> : <Save className="w-4 h-4" />}
                                         </button>
                                     </div>
-                                    <p className="text-[8px] text-gray-400 mt-2 uppercase tracking-tight italic">Al guardar, el estado de envío cambiará a 'Despachado'</p>
+                                    <p className="text-[8px] text-gray-400 mt-2 uppercase tracking-tight italic">Puedes cambiar el estado de envío manualmente desde el selector.</p>
                                 </div>
                             </div>
                         </div>

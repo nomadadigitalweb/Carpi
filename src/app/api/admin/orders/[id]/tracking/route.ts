@@ -4,6 +4,9 @@ import { createAdminClient } from "@/lib/supabase-admin";
 
 const STAFF_ROLES = ["admin_carpi", "gestor_financiero", "encargado_ventas"];
 const ADMIN_EMAIL = "admin@carpi.com";
+const SHIPPING_STATUSES = ["preparando", "despachado", "entregado"] as const;
+
+type ShippingStatus = (typeof SHIPPING_STATUSES)[number];
 
 async function requireStaff() {
   const supabase = await createRouteClient();
@@ -37,19 +40,35 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (!auth.ok) return auth.response;
 
   const { id } = await context.params;
-  const body = (await request.json()) as { tracking_number?: string };
+  const body = (await request.json()) as { tracking_number?: string; status_envio?: string };
 
   if (!id) {
     return NextResponse.json({ error: "Order id is required" }, { status: 400 });
   }
 
+  if (body.status_envio && !SHIPPING_STATUSES.includes(body.status_envio as ShippingStatus)) {
+    return NextResponse.json({ error: "Estado de envío inválido" }, { status: 400 });
+  }
+
+  const updates: Record<string, unknown> = {};
+  if (typeof body.tracking_number === "string") {
+    updates.tracking_number = body.tracking_number;
+  }
+
+  if (body.status_envio) {
+    updates.status_envio = body.status_envio;
+  } else if (typeof body.tracking_number === "string" && body.tracking_number.trim().length > 0) {
+    updates.status_envio = "despachado";
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "No hay campos para actualizar" }, { status: 400 });
+  }
+
   const admin = createAdminClient();
   const { error } = await admin
     .from("orders")
-    .update({
-      tracking_number: body.tracking_number ?? "",
-      status_envio: "despachado",
-    })
+    .update(updates)
     .eq("id", id);
 
   if (error) {
