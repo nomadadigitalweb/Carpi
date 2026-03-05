@@ -3,11 +3,22 @@
 import { useEffect, useState } from "react";
 import { Truck, Package, Clock, CheckCircle, Search, Save } from "lucide-react";
 
+const ORDER_STATUS_OPTIONS = [
+    { value: 'pendiente_fabricante', label: 'Pendiente fabricante' },
+    { value: 'aprobado', label: 'Aprobado' },
+    { value: 'facturado', label: 'Facturado' },
+    { value: 'pagado', label: 'Pagado' },
+    { value: 'rechazado', label: 'Rechazado' },
+    { value: 'cancelado', label: 'Cancelado' },
+];
+
 export default function OrdersPage() {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [updatingId, setUpdatingId] = useState<string | null>(null);
+    const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+    const [invoicingId, setInvoicingId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchOrders();
@@ -45,6 +56,47 @@ export default function OrdersPage() {
             alert(payload.error ?? 'No se pudo actualizar tracking');
         }
         setUpdatingId(null);
+    }
+
+    async function handleUpdateOrderStatus(id: string, status: string) {
+        setUpdatingStatusId(id);
+
+        const response = await fetch(`/api/admin/orders/${id}/status`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status }),
+        });
+
+        const payload = (await response.json()) as { ok?: boolean; error?: string };
+
+        if (response.ok && payload.ok) {
+            setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+        } else {
+            alert(payload.error ?? 'No se pudo actualizar el estado');
+        }
+
+        setUpdatingStatusId(null);
+    }
+
+    async function handleEmitInvoice(id: string) {
+        setInvoicingId(id);
+
+        const response = await fetch(`/api/admin/orders/${id}/invoice`, {
+            method: 'POST',
+        });
+
+        const payload = (await response.json()) as { ok?: boolean; error?: string };
+
+        if (response.ok && payload.ok) {
+            setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'facturado' } : o));
+            alert('Factura emitida en Xubio y email enviado al fabricante con datos bancarios.');
+        } else {
+            alert(payload.error ?? 'No se pudo emitir la factura');
+        }
+
+        setInvoicingId(null);
     }
 
     const filteredOrders = orders.filter(o =>
@@ -93,6 +145,26 @@ export default function OrdersPage() {
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-8">
+                                            <div>
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Estado Pedido</p>
+                                                <div className="flex items-center gap-2">
+                                                    <select
+                                                        className="bg-gray-50 border border-gray-200 px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                                                        value={order.status ?? 'pendiente_fabricante'}
+                                                        onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
+                                                        disabled={updatingStatusId === order.id}
+                                                    >
+                                                        {ORDER_STATUS_OPTIONS.map((option) => (
+                                                            <option key={option.value} value={option.value}>
+                                                                {option.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    {updatingStatusId === order.id && (
+                                                        <div className="animate-spin h-3 w-3 border-b-2 border-black" />
+                                                    )}
+                                                </div>
+                                            </div>
                                         <div>
                                             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Estado</p>
                                             <div className="flex items-center gap-2">
@@ -107,6 +179,14 @@ export default function OrdersPage() {
                                             <p className="text-sm font-bold">${Number(order.total).toLocaleString('es-AR')}</p>
                                         </div>
                                     </div>
+
+                                    <button
+                                        className="text-[10px] mt-1 px-3 py-2 border border-black text-black font-bold uppercase tracking-wider hover:bg-black hover:text-white transition-colors disabled:opacity-50"
+                                        onClick={() => handleEmitInvoice(order.id)}
+                                        disabled={invoicingId === order.id || order.status === 'facturado'}
+                                    >
+                                        {invoicingId === order.id ? 'Emitiendo...' : order.status === 'facturado' ? 'Factura emitida' : 'Emitir factura'}
+                                    </button>
                                 </div>
 
                                 <div className="flex flex-col justify-center border-t lg:border-t-0 lg:border-l border-gray-100 pt-6 lg:pt-0 lg:pl-8">
