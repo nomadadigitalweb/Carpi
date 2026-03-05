@@ -119,11 +119,14 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
 
     return NextResponse.json({ ok: true, invoice });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error al emitir factura";
+    const rawMessage = error instanceof Error ? error.message : "Error al emitir factura";
+    const message = /\(401\)/.test(rawMessage)
+      ? "Xubio rechazó la factura (401). Revisá credenciales/permisos (client_id, secret, tenant) y configuración fiscal de facturación en Xubio."
+      : rawMessage;
 
     await admin
       .from("orders")
-      .update({ notes: `Error emitiendo factura: ${message}` })
+      .update({ notes: `Error emitiendo factura: ${rawMessage}` })
       .eq("id", order.id);
 
     return NextResponse.json({ error: message }, { status: 500 });

@@ -18,6 +18,12 @@ const SHIPPING_STATUS_OPTIONS = [
     { value: 'entregado', label: 'Entregado' },
 ];
 
+function shortErrorMessage(message: string | undefined, fallback: string): string {
+    if (!message) return fallback;
+    const compact = message.replace(/\s+/g, ' ').trim();
+    return compact.length > 220 ? `${compact.slice(0, 220)}...` : compact;
+}
+
 export default function OrdersPage() {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -121,7 +127,7 @@ export default function OrdersPage() {
             setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'facturado' } : o));
             alert('Factura emitida en Xubio y email enviado al fabricante con datos bancarios.');
         } else {
-            alert(payload.error ?? 'No se pudo emitir la factura');
+            alert(shortErrorMessage(payload.error, 'No se pudo emitir la factura'));
         }
 
         setInvoicingId(null);

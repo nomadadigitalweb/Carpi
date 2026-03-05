@@ -2,6 +2,32 @@ import { XubioInvoicePayload, XubioInvoiceResponse, XubioTokenResponse } from "@
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
+function summarizeXubioErrorBody(rawBody: string): string {
+  const trimmed = rawBody.trim();
+  if (!trimmed) return "(sin detalle)";
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const candidate =
+      parsed.message ??
+      parsed.error_description ??
+      parsed.error ??
+      parsed.detalle ??
+      parsed.detail ??
+      parsed.cause;
+
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim().slice(0, 240);
+    }
+
+    const withoutStack = { ...parsed };
+    delete withoutStack.stackTrace;
+    return JSON.stringify(withoutStack).slice(0, 240);
+  } catch {
+    return trimmed.replace(/\s+/g, " ").slice(0, 240);
+  }
+}
+
 function getRequiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -66,7 +92,7 @@ async function getAccessToken(): Promise<string> {
 
     if (!response.ok) {
       const body = await response.text();
-      lastError = `Token endpoint ${tokenUrl} failed (${response.status}): ${body}`;
+      lastError = `Token endpoint ${tokenUrl} failed (${response.status}): ${summarizeXubioErrorBody(body)}`;
       continue;
     }
 
@@ -102,7 +128,7 @@ async function xubioRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
     if (!directResponse.ok) {
       const body = await directResponse.text();
-      throw new Error(`Xubio API error at ${path} (${directResponse.status}): ${body}`);
+      throw new Error(`Xubio API error at ${path} (${directResponse.status}): ${summarizeXubioErrorBody(body)}`);
     }
 
     return (await directResponse.json()) as T;
@@ -133,17 +159,56 @@ async function xubioRequest<T>(path: string, init?: RequestInit): Promise<T> {
     }
 
     const body = await response.text();
-    lastError = `Xubio API error at ${url} (${response.status}): ${body}`;
+    lastError = `Xubio API error at ${url} (${response.status}): ${summarizeXubioErrorBody(body)}`;
   }
 
   throw new Error(lastError);
 }
 
+function normalizeXubioInvoiceResponse(payload: Record<string, unknown>): XubioInvoiceResponse {
+  const rawId = payload.id ?? payload.ID ?? payload.transaccionid ?? payload.transaccionId ?? payload.comprobante;
+  if (!rawId) {
+    throw new Error("Xubio invoice response missing id/transaccionid");
+  }
+
+  const rawCae = payload.cae ?? payload.CAE;
+  const rawPdf = payload.pdf_url ?? payload.pdfUrl ?? payload.urlPdf ?? payload.urlPDF;
+
+  return {
+    id: String(rawId),
+    cae: rawCae ? String(rawCae) : "",
+    pdf_url: rawPdf ? String(rawPdf) : "",
+  };
+}
+
 export async function createXubioInvoice(payload: XubioInvoicePayload): Promise<XubioInvoiceResponse> {
-  return xubioRequest<XubioInvoiceResponse>("/invoices", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  const configuredPath = process.env.XUBIO_INVOICE_PATH;
+  const candidates = [
+    configuredPath,
+    "https://xubio.com/API/1.1/facturar",
+    "https://xubio.com/API/1.1/comprobanteVentaBean",
+  ].filter((value): value is string => Boolean(value));
+
+  let lastError = "No invoice endpoint attempted";
+
+  for (const endpoint of candidates) {
+    try {
+      const response = await xubioRequest<Record<string, unknown>>(endpoint, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      return normalizeXubioInvoiceResponse(response);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown invoice error";
+      if (!/\(404\)/.test(message)) {
+        throw error;
+      }
+      lastError = message;
+    }
+  }
+
+  throw new Error(lastError);
 }
 
 export async function syncXubioProducts(): Promise<unknown> {
