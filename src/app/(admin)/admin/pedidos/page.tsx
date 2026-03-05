@@ -1,11 +1,9 @@
 "use client";
 
-import { createClient } from "@/utils/supabase/client";
 import { useEffect, useState } from "react";
 import { Truck, Package, Clock, CheckCircle, Search, Save } from "lucide-react";
 
 export default function OrdersPage() {
-    const supabase = createClient();
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -17,31 +15,41 @@ export default function OrdersPage() {
 
     async function fetchOrders() {
         setLoading(true);
-        const { data, error } = await supabase
-            .from('orders')
-            .select('*')
-            .order('created_at', { ascending: false });
+        const response = await fetch('/api/admin/orders', { cache: 'no-store' });
+        const payload = (await response.json()) as { orders?: any[]; error?: string };
 
-        if (data) setOrders(data);
+        if (response.ok && payload.orders) {
+            setOrders(payload.orders);
+        } else {
+            setOrders([]);
+            console.error(payload.error ?? 'No se pudieron cargar pedidos');
+        }
         setLoading(false);
     }
 
     async function handleUpdateTracking(id: string, tracking_number: string) {
         setUpdatingId(id);
-        const { error } = await supabase
-            .from('orders')
-            .update({ tracking_number, status_envio: 'despachado' })
-            .eq('id', id);
+        const response = await fetch(`/api/admin/orders/${id}/tracking`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ tracking_number }),
+        });
 
-        if (!error) {
+        const payload = (await response.json()) as { ok?: boolean; error?: string };
+
+        if (response.ok && payload.ok) {
             setOrders(prev => prev.map(o => o.id === id ? { ...o, tracking_number, status_envio: 'despachado' } : o));
+        } else {
+            alert(payload.error ?? 'No se pudo actualizar tracking');
         }
         setUpdatingId(null);
     }
 
     const filteredOrders = orders.filter(o =>
         o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        o.user_id.toLowerCase().includes(searchTerm.toLowerCase())
+        (o.user_id ?? '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (

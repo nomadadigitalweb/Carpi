@@ -18,6 +18,17 @@ export default async function AdminLayout({
 
     const isAdminEmail = user.email?.toLowerCase() === "admin@carpi.com";
 
+    if (isAdminEmail) {
+        await supabase
+            .from('profiles')
+            .upsert({
+                id: user.id,
+                email: user.email,
+                role: 'admin_carpi',
+                is_active: true,
+            }, { onConflict: 'id' });
+    }
+
     // Fetch role from profiles
     const { data: profile } = await supabase
         .from('profiles')
