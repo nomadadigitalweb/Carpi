@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Footer from "@/components/Footer";
 import { useCart } from "@/context/CartContext";
+import { createClient } from "@/utils/supabase/client";
 import { Filter, ShoppingBag } from "lucide-react";
 
 type ProductView = {
@@ -17,6 +18,14 @@ type ProductView = {
 export default function ShopCatalogClient({ products }: { products: ProductView[] }) {
   const { addToCart } = useCart();
   const [filter, setFilter] = useState("Todos");
+  const [canOrder, setCanOrder] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setCanOrder(Boolean(data.user));
+    });
+  }, []);
 
   const categories = useMemo(
     () => ["Todos", ...Array.from(new Set(products.map((product) => product.category).filter((category): category is string => Boolean(category))))],
@@ -36,7 +45,7 @@ export default function ShopCatalogClient({ products }: { products: ProductView[
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Colección Carpi</span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-extrabold uppercase tracking-tighter">Shop Online</h1>
+            <h1 className="text-4xl md:text-5xl font-extrabold uppercase tracking-tighter">Tienda de Pedidos</h1>
           </div>
 
           <div className="flex items-center gap-4 overflow-x-auto pb-2 w-full md:w-auto">
@@ -83,22 +92,28 @@ export default function ShopCatalogClient({ products }: { products: ProductView[
                 </div>
                 <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-4">{product.category}</p>
 
-                <button
-                  onClick={() =>
-                    addToCart({
-                      id: product.id,
-                      name: product.name,
-                      price: product.display_price,
-                      image: product.image_url ?? "/images/prod/fenix.jpg",
-                      quantity: 1,
-                    })
-                  }
-                  disabled={product.stock <= 0}
-                  className="mt-auto w-full py-3 border border-black text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-black hover:text-white transition-all duration-300 disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-black flex items-center justify-center gap-2"
-                >
-                  <ShoppingBag className="w-4 h-4" />
-                  Agregar al carrito
-                </button>
+                {canOrder ? (
+                  <button
+                    onClick={() =>
+                      addToCart({
+                        id: product.id,
+                        name: product.name,
+                        price: product.display_price,
+                        image: product.image_url ?? "/images/prod/fenix.jpg",
+                        quantity: 1,
+                      })
+                    }
+                    disabled={product.stock <= 0}
+                    className="mt-auto w-full py-3 border border-black text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-black hover:text-white transition-all duration-300 disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-black flex items-center justify-center gap-2"
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                    Agregar al pedido
+                  </button>
+                ) : (
+                  <p className="mt-auto text-[10px] uppercase tracking-[0.2em] text-gray-500 font-bold py-3 border border-gray-200 text-center">
+                    Inicia sesión para armar pedidos
+                  </p>
+                )}
               </div>
             </div>
           ))}

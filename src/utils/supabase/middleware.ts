@@ -39,18 +39,42 @@ export async function updateSession(request: NextRequest) {
     )
 
     const { data: { user } } = await supabase.auth.getUser()
+    const isAdminEmail = user?.email?.toLowerCase() === 'admin@carpi.com'
 
     let role: AppRole | null = null
+    let isActive = true
 
     if (user) {
         const { data: profile } = await supabase
             .from('profiles')
-            .select('role')
+            .select('role,is_active')
             .eq('id', user.id)
-            .single()
+            .maybeSingle()
 
         role = (profile?.role as AppRole | undefined) ?? null
+        isActive = profile?.is_active !== false
+
+        if (!role && isAdminEmail) {
+            role = 'admin_carpi'
+        }
     }
+
+    // Block inactive users from all protected routes
+    if (user && !isActive) {
+        const isProtected =
+            request.nextUrl.pathname.startsWith('/admin') ||
+            request.nextUrl.pathname.startsWith('/dashboard') ||
+            request.nextUrl.pathname.startsWith('/mi-cuenta') ||
+            request.nextUrl.pathname.startsWith('/checkout') ||
+            request.nextUrl.pathname.startsWith('/tienda')
+
+        if (isProtected) {
+            await supabase.auth.signOut()
+            return NextResponse.redirect(new URL('/login?error=inactive', request.url))
+        }
+    }
+
+    const isAdminRole = role === 'admin_carpi' || isAdminEmail
 
     if (request.nextUrl.pathname.startsWith('/admin')) {
         if (!user || !role || !staffRoles.includes(role)) {
@@ -63,6 +87,10 @@ export async function updateSession(request: NextRequest) {
             return NextResponse.redirect(new URL('/login?next=/dashboard', request.url))
         }
 
+        if (isAdminRole) {
+            return response
+        }
+
         if (role !== 'fabricante') {
             return NextResponse.redirect(new URL('/', request.url))
         }
@@ -73,7 +101,7 @@ export async function updateSession(request: NextRequest) {
             return NextResponse.redirect(new URL('/login?next=/mi-cuenta', request.url))
         }
 
-        if (role && role !== 'usuario') {
+        if (role && role !== 'usuario' && !isAdminRole) {
             return NextResponse.redirect(new URL('/', request.url))
         }
     }

@@ -10,13 +10,20 @@ async function requireStaff() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("No autenticado.");
+
+  const isAdminEmail = user.email?.toLowerCase() === "admin@carpi.com";
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, role")
     .eq("id", user.id)
-    .single();
-  if (!profile || !STAFF_ROLES.includes(profile.role))
+    .maybeSingle();
+
+  const role = (profile?.role as string | undefined) ?? (isAdminEmail ? "admin_carpi" : undefined);
+
+  if (!role || !STAFF_ROLES.includes(role))
     throw new Error("Sin permisos.");
+
   return { supabase, user, profile };
 }
 

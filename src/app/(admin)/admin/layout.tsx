@@ -16,14 +16,16 @@ export default async function AdminLayout({
         redirect("/login");
     }
 
+    const isAdminEmail = user.email?.toLowerCase() === "admin@carpi.com";
+
     // Fetch role from profiles
-    let { data: profile } = await supabase
+    const { data: profile } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
-    const role = profile?.role;
+    const role = (profile?.role as string | undefined) ?? (isAdminEmail ? 'admin_carpi' : undefined);
 
     if (!role || !['admin_carpi', 'gestor_financiero', 'encargado_ventas'].includes(role)) {
         redirect("/");

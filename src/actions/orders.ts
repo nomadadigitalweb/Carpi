@@ -28,26 +28,46 @@ export async function createOrderFromCart(lines: CartLine[]) {
 
   const { data: myProfile } = await supabase
     .from("profiles")
-    .select("id, role, parent_id")
+    .select("id, role, parent_id, lista_precio_id")
     .eq("id", user.id)
-    .single<Pick<ProfileRow, "id" | "role" | "parent_id">>();
+    .single<Pick<ProfileRow, "id" | "role" | "parent_id" | "lista_precio_id">>();
 
-  if (!myProfile || myProfile.role !== "usuario") {
-    throw new Error("Solo usuarios finales pueden crear pedidos.");
+  if (!myProfile || !["usuario", "fabricante"].includes(myProfile.role)) {
+    throw new Error("Solo usuarios o fabricantes pueden crear pedidos.");
   }
 
-  if (!myProfile.parent_id) {
+  const isFabricante = myProfile.role === "fabricante";
+
+  // For "usuario": must have a parent fabricante
+  // For "fabricante": they ARE the fabricante (orders go to Carpi directly)
+  if (!isFabricante && !myProfile.parent_id) {
     throw new Error("Tu cuenta no tiene fabricante asignado.");
   }
 
-  const { data: fabricante } = await supabase
-    .from("profiles")
-    .select("id, lista_precio_id")
-    .eq("id", myProfile.parent_id)
-    .single<Pick<ProfileRow, "id" | "lista_precio_id">>();
+  let fabricanteId: string;
+  let listaPrecioId: number | null;
 
-  if (!fabricante?.lista_precio_id) {
-    throw new Error("El fabricante no tiene lista de precios configurada.");
+  if (isFabricante) {
+    // Fabricante ordering directly — they are their own fabricante
+    fabricanteId = myProfile.id;
+    listaPrecioId = myProfile.lista_precio_id ?? null;
+  } else {
+    // Usuario ordering — look up parent fabricante
+    const { data: fabricante } = await supabase
+      .from("profiles")
+      .select("id, lista_precio_id")
+      .eq("id", myProfile.parent_id!)
+      .single<Pick<ProfileRow, "id" | "lista_precio_id">>();
+
+    if (!fabricante?.lista_precio_id) {
+      throw new Error("El fabricante no tiene lista de precios configurada.");
+    }
+    fabricanteId = fabricante.id;
+    listaPrecioId = fabricante.lista_precio_id;
+  }
+
+  if (!listaPrecioId) {
+    throw new Error("No hay lista de precios configurada.");
   }
 
   const productIds = Array.from(new Set(lines.map((line) => line.productId)));
@@ -59,7 +79,7 @@ export async function createOrderFromCart(lines: CartLine[]) {
   const { data: prices } = await supabase
     .from("product_prices")
     .select("product_id,price")
-    .eq("lista_precio_id", fabricante.lista_precio_id)
+    .eq("lista_precio_id", listaPrecioId)
     .in("product_id", productIds);
 
   const productById = new Map((products ?? []).map((product) => [product.id, product]));
@@ -84,13 +104,19 @@ export async function createOrderFromCart(lines: CartLine[]) {
 
   const total = resolvedLines.reduce((acc, line) => acc + line.unitPrice * line.quantity, 0);
 
+  // Fabricante orders are auto-approved (sent directly to Carpi)
+  const orderStatus: OrderStatus = isFabricante ? "aprobado" : "pendiente_fabricante";
+
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
       user_id: user.id,
-      fabricante_id: fabricante.id,
+      fabricante_id: fabricanteId,
       total,
-      status: "pendiente_fabricante" satisfies OrderStatus,
+      status: orderStatus,
+      ...(isFabricante
+        ? { approved_by: user.id, approved_at: new Date().toISOString() }
+        : {}),
     })
     .select("id")
     .single();

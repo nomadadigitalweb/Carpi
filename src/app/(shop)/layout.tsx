@@ -2,12 +2,54 @@ import { CartProvider } from "@/context/CartContext";
 import Link from "next/link";
 import { ShoppingCart } from "lucide-react";
 import { AnalyticsTracker } from "@/lib/analytics";
+import { createClient } from "@/utils/supabase/server";
 
-export default function ShopLayout({
+type AppRole = "admin_carpi" | "gestor_financiero" | "encargado_ventas" | "fabricante" | "usuario";
+
+const staffRoles: AppRole[] = ["admin_carpi", "gestor_financiero", "encargado_ventas"];
+
+export default async function ShopLayout({
     children,
 }: {
     children: React.ReactNode;
 }) {
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    let role: AppRole | null = null;
+
+    if (user) {
+        const { data: profile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .maybeSingle();
+
+        role = (profile?.role as AppRole | undefined) ?? null;
+    }
+
+    const isAdminEmail = user?.email?.toLowerCase() === "admin@carpi.com";
+    const isStaffUser = (role ? staffRoles.includes(role) : false) || isAdminEmail;
+    const isFabricante = role === "fabricante";
+
+    const accountHref = !user
+        ? "/login?next=/mi-cuenta"
+        : isStaffUser
+            ? "/admin"
+            : isFabricante
+                ? "/dashboard"
+                : "/mi-cuenta";
+
+    const accountLabel = !user
+        ? "INGRESAR"
+        : isStaffUser
+            ? "ADMINISTRADOR"
+            : isFabricante
+                ? "DASHBOARD"
+                : "MI CUENTA";
+
     return (
         <div className="min-h-screen bg-black selection:bg-white selection:text-black">
             <header className="fixed top-0 left-0 right-0 z-50 grid grid-cols-3 items-center px-8 py-6 bg-black/95 backdrop-blur-sm transition-all duration-300">
@@ -40,10 +82,10 @@ export default function ShopLayout({
                         <span className="absolute -top-2 -right-2 bg-white text-black text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center">0</span>
                     </Link>
                     <Link
-                        href="/login"
+                        href={accountHref}
                         className="text-[10px] font-bold uppercase tracking-[0.3em] hover:text-gray-300 transition-colors border border-white/20 px-6 py-3 hover:bg-white hover:text-black"
                     >
-                        INGRESAR
+                        {accountLabel}
                     </Link>
                 </div>
             </header>

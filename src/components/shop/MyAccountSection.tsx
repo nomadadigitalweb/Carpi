@@ -39,7 +39,6 @@ type SelectedItem = {
 
 type TeamUser = {
   id: string;
-  full_name: string | null;
   email: string | null;
 };
 
@@ -131,9 +130,9 @@ export default function MyAccountSection() {
       if (includeTeamOrders && profile.can_view_team_orders && profile.parent_id) {
         const { data: teamProfiles } = await supabase
           .from("profiles")
-          .select("id,full_name,email")
+          .select("id,email")
           .eq("parent_id", profile.parent_id)
-          .order("full_name", { ascending: true });
+          .order("email", { ascending: true });
 
         const users = (teamProfiles ?? []) as TeamUser[];
         setTeamUsers(users);
@@ -254,7 +253,7 @@ export default function MyAccountSection() {
   const teamUserNameById = useMemo(() => {
     const map = new Map<string, string>();
     teamUsers.forEach((user) => {
-      map.set(user.id, user.full_name || user.email || user.id);
+      map.set(user.id, user.email || user.id);
     });
     return map;
   }, [teamUsers]);
@@ -268,7 +267,24 @@ export default function MyAccountSection() {
   }
 
   if (!userId || !profile) {
-    return null;
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center px-6">
+        <div className="max-w-md w-full border border-gray-200 rounded-lg p-6 text-center">
+          <h2 className="text-lg font-bold uppercase tracking-tight">No pudimos cargar tu cuenta</h2>
+          <p className="text-sm text-gray-600 mt-2">
+            Iniciá sesión nuevamente para continuar.
+          </p>
+          {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
+          <button
+            type="button"
+            onClick={() => router.push("/login?next=/mi-cuenta")}
+            className="mt-5 px-4 py-2.5 rounded-lg bg-black text-white text-sm font-semibold hover:bg-zinc-800"
+          >
+            Ir a Ingresar
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import Footer from "@/components/Footer";
 import { useCart } from "@/context/CartContext";
 import { trackProductView } from "@/lib/analytics";
+import { createClient } from "@/utils/supabase/client";
 import { ArrowLeft, Check, ShieldCheck, ShoppingBag, Truck } from "lucide-react";
 
 type ProductDetailView = {
@@ -21,10 +22,18 @@ export default function ProductDetailClient({ product }: { product: ProductDetai
   const router = useRouter();
   const { addToCart } = useCart();
   const [added, setAdded] = useState(false);
+  const [canOrder, setCanOrder] = useState(false);
 
   useEffect(() => {
     trackProductView(product.id);
   }, [product.id]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setCanOrder(Boolean(data.user));
+    });
+  }, []);
 
   const handleAddToCart = () => {
     addToCart({
@@ -83,25 +92,31 @@ export default function ProductDetailClient({ product }: { product: ProductDetai
             </div>
 
             <div className="mt-auto">
-              <button
-                onClick={handleAddToCart}
-                disabled={product.stock <= 0}
-                className={`w-full py-5 text-xs font-bold uppercase tracking-[0.3em] transition-all duration-500 flex items-center justify-center gap-3 ${
-                  added ? "bg-green-600 text-white" : "bg-black text-white hover:bg-gray-800"
-                } disabled:bg-gray-200 disabled:text-gray-400`}
-              >
-                {added ? (
-                  <>
-                    <Check className="w-5 h-5" />
-                    Agregado
-                  </>
-                ) : (
-                  <>
-                    <ShoppingBag className="w-5 h-5" />
-                    {product.stock > 0 ? "Añadir al carrito" : "Sin stock"}
-                  </>
-                )}
-              </button>
+              {canOrder ? (
+                <button
+                  onClick={handleAddToCart}
+                  disabled={product.stock <= 0}
+                  className={`w-full py-5 text-xs font-bold uppercase tracking-[0.3em] transition-all duration-500 flex items-center justify-center gap-3 ${
+                    added ? "bg-green-600 text-white" : "bg-black text-white hover:bg-gray-800"
+                  } disabled:bg-gray-200 disabled:text-gray-400`}
+                >
+                  {added ? (
+                    <>
+                      <Check className="w-5 h-5" />
+                      Agregado
+                    </>
+                  ) : (
+                    <>
+                      <ShoppingBag className="w-5 h-5" />
+                      {product.stock > 0 ? "Agregar al pedido" : "Sin stock"}
+                    </>
+                  )}
+                </button>
+              ) : (
+                <p className="w-full py-5 text-center border border-gray-200 text-xs font-bold uppercase tracking-[0.25em] text-gray-500">
+                  Inicia sesión para armar pedidos
+                </p>
+              )}
             </div>
           </div>
         </div>

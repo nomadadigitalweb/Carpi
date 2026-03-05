@@ -12,13 +12,17 @@ export default async function FabricanteLayout({ children }: { children: React.R
     redirect("/login?next=/dashboard");
   }
 
+  const isAdminEmail = user.email?.toLowerCase() === "admin@carpi.com";
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
-  if (profile?.role !== "fabricante") {
+  const role = (profile?.role as string | undefined) ?? (isAdminEmail ? "admin_carpi" : undefined);
+
+  if (role !== "fabricante" && role !== "admin_carpi") {
     redirect("/");
   }
 

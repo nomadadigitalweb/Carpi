@@ -67,7 +67,7 @@ export default function CheckoutPage() {
               {!hasItems && (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
-                    Tu carrito está vacío.
+                    Tu pedido está vacío.
                   </td>
                 </tr>
               )}
@@ -83,7 +83,7 @@ export default function CheckoutPage() {
 
           <div className="flex gap-3">
             <Link href="/tienda" className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold hover:bg-gray-100">
-              Seguir comprando
+              Seguir armando pedido
             </Link>
             <button
               onClick={onConfirmOrder}
