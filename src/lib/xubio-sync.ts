@@ -1,11 +1,16 @@
+import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { syncXubioPriceLists, syncXubioProducts } from "@/lib/xubio";
+import { syncXubioPriceListDetail, syncXubioPriceLists, syncXubioProducts } from "@/lib/xubio";
 
 type SyncResult = {
-  entityType: "products" | "price_lists";
+  entityType: "products" | "price_lists" | "catalog";
   status: "success" | "error";
   recordsSynced: number;
   errorDetail?: string;
+};
+
+type ProductSyncOptions = {
+  replaceAll?: boolean;
 };
 
 type XubioProduct = {
@@ -25,6 +30,36 @@ type XubioPriceRow = {
   price: number;
 };
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object") {
+    const candidate = error as Record<string, unknown>;
+    const messageParts = [candidate.message, candidate.details, candidate.hint, candidate.code]
+      .filter((value): value is string => typeof value === "string" && value.length > 0);
+
+    if (messageParts.length) {
+      return messageParts.join(" | ");
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "Unknown error object";
+    }
+  }
+
+  return "Unknown error";
+}
+
+function toDeterministicProductId(externalId: number): string {
+  const hex = createHash("sha1").update(`xubio-product-${externalId}`).digest("hex");
+  const variant = ((parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80).toString(16).padStart(2, "0");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(18, 20)}-${hex.slice(20, 32)}`;
+}
+
 function toArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) {
     return value as T[];
@@ -32,7 +67,17 @@ function toArray<T>(value: unknown): T[] {
 
   if (value && typeof value === "object") {
     const obj = value as Record<string, unknown>;
-    const candidateKeys = ["items", "data", "results", "productos", "products", "price_lists", "listas", "prices"];
+    const candidateKeys = [
+      "items",
+      "data",
+      "results",
+      "productos",
+      "products",
+      "price_lists",
+      "listas",
+      "prices",
+      "listaPrecioItem",
+    ];
     for (const key of candidateKeys) {
       if (Array.isArray(obj[key])) {
         return obj[key] as T[];
@@ -58,14 +103,14 @@ function normalizeProducts(raw: unknown): XubioProduct[] {
 
   return rows
     .map((row): XubioProduct | null => {
-      const id = parseNumber(row.id ?? row.product_id ?? row.articulo_id ?? row.external_id);
+      const id = parseNumber(row.productoid ?? row.id ?? row.ID ?? row.product_id ?? row.articulo_id ?? row.external_id);
       const name = (row.name ?? row.nombre ?? row.description ?? row.descripcion) as string | undefined;
 
       if (!id || !name) {
         return null;
       }
 
-      const skuRaw = row.sku ?? row.code ?? row.codigo;
+      const skuRaw = row.sku ?? row.code ?? row.codigo ?? row.usrcode;
       const descriptionRaw = row.description ?? row.descripcion;
       const imageRaw = row.image_url ?? row.imagen_url ?? row.image;
       const categoryRaw = row.category ?? row.categoria ?? row.linea;
@@ -77,7 +122,7 @@ function normalizeProducts(raw: unknown): XubioProduct[] {
         description: typeof descriptionRaw === "string" ? descriptionRaw : undefined,
         image_url: typeof imageRaw === "string" ? imageRaw : undefined,
         category: typeof categoryRaw === "string" ? categoryRaw : undefined,
-        price: parseNumber(row.price ?? row.public_price ?? row.precio_publico),
+        price: parseNumber(row.price ?? row.precio ?? row.public_price ?? row.precio_publico),
         stock: parseNumber(row.stock ?? row.available_stock ?? row.disponible),
       };
     })
@@ -89,14 +134,19 @@ function normalizePrices(raw: unknown): XubioPriceRow[] {
   const output: XubioPriceRow[] = [];
 
   for (const row of rows) {
-    const listaId = parseNumber(row.lista_precio_id ?? row.price_list_id ?? row.id_lista ?? row.id);
+    const listaId = parseNumber(row.listaPrecioID ?? row.lista_precio_id ?? row.price_list_id ?? row.id_lista ?? row.id);
 
-    const nestedPrices = toArray<Record<string, unknown>>(row.prices ?? row.precios ?? row.items);
+    const nestedPrices = toArray<Record<string, unknown>>(row.listaPrecioItem ?? row.prices ?? row.precios ?? row.items);
 
     if (nestedPrices.length && listaId) {
       for (const nestedRow of nestedPrices) {
         const productExternalId = parseNumber(
-          nestedRow.product_external_id ?? nestedRow.product_id ?? nestedRow.articulo_id ?? nestedRow.id_articulo
+          nestedRow.product_external_id ??
+            nestedRow.product_id ??
+            nestedRow.articulo_id ??
+            nestedRow.id_articulo ??
+            (nestedRow.producto as Record<string, unknown> | undefined)?.id ??
+            (nestedRow.producto as Record<string, unknown> | undefined)?.ID
         );
         const price = parseNumber(nestedRow.price ?? nestedRow.precio ?? nestedRow.unit_price);
 
@@ -112,7 +162,12 @@ function normalizePrices(raw: unknown): XubioPriceRow[] {
     }
 
     const productExternalId = parseNumber(
-      row.product_external_id ?? row.product_id ?? row.articulo_id ?? row.id_articulo
+      row.product_external_id ??
+        row.product_id ??
+        row.articulo_id ??
+        row.id_articulo ??
+        (row.producto as Record<string, unknown> | undefined)?.id ??
+        (row.producto as Record<string, unknown> | undefined)?.ID
     );
     const price = parseNumber(row.price ?? row.precio ?? row.unit_price);
 
@@ -138,11 +193,50 @@ async function logSync(result: SyncResult) {
   });
 }
 
-export async function runProductSync(): Promise<SyncResult> {
+export async function runProductSync(options: ProductSyncOptions = {}): Promise<SyncResult> {
   try {
     const supabase = createAdminClient();
+
     const response = await syncXubioProducts();
     const products = normalizeProducts(response);
+
+    if (options.replaceAll) {
+      const incomingExternalIds = new Set(products.map((product) => product.id));
+
+      const { data: existingProducts, error: existingProductsError } = await supabase
+        .from("products")
+        .select("id,xubio_product_id");
+
+      if (existingProductsError) {
+        throw existingProductsError;
+      }
+
+      const removableProductIds = (existingProducts ?? [])
+        .filter((product) => !incomingExternalIds.has(Number(product.xubio_product_id)))
+        .map((product) => product.id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+      const { error: deletePricesError } = await supabase.from("product_prices").delete().not("id", "is", null);
+      if (deletePricesError) {
+        throw deletePricesError;
+      }
+
+      if (removableProductIds.length > 0) {
+        const { error: deleteImagesError } = await supabase
+          .from("product_images")
+          .delete()
+          .in("product_id", removableProductIds);
+
+        if (deleteImagesError && deleteImagesError.code !== "42P01") {
+          throw deleteImagesError;
+        }
+
+        const { error: deleteProductsError } = await supabase.from("products").delete().in("id", removableProductIds);
+        if (deleteProductsError) {
+          throw deleteProductsError;
+        }
+      }
+    }
 
     if (products.length === 0) {
       const result: SyncResult = {
@@ -156,6 +250,7 @@ export async function runProductSync(): Promise<SyncResult> {
 
     const { error } = await supabase.from("products").upsert(
       products.map((product) => ({
+        id: toDeterministicProductId(product.id),
         xubio_product_id: product.id,
         name: product.name,
         sku: product.sku ?? null,
@@ -164,6 +259,7 @@ export async function runProductSync(): Promise<SyncResult> {
         category: product.category ?? null,
         price: product.price ?? 0,
         stock: Math.max(0, Math.floor(product.stock ?? 0)),
+        updated_at: new Date().toISOString(),
       })),
       { onConflict: "xubio_product_id" }
     );
@@ -184,7 +280,7 @@ export async function runProductSync(): Promise<SyncResult> {
       entityType: "products",
       status: "error",
       recordsSynced: 0,
-      errorDetail: error instanceof Error ? error.message : "Unknown error",
+      errorDetail: getErrorMessage(error),
     };
     await logSync(result);
     return result;
@@ -195,7 +291,19 @@ export async function runPriceSync(): Promise<SyncResult> {
   try {
     const supabase = createAdminClient();
     const response = await syncXubioPriceLists();
-    const rows = normalizePrices(response);
+    let rows = normalizePrices(response);
+
+    if (rows.length === 0) {
+      const summaryLists = toArray<Record<string, unknown>>(response);
+      const listIds = summaryLists
+        .map((row) => parseNumber(row.listaPrecioID ?? row.lista_precio_id ?? row.price_list_id ?? row.id))
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+
+      if (listIds.length > 0) {
+        const detailedLists = await Promise.all(listIds.map((listId) => syncXubioPriceListDetail(listId)));
+        rows = detailedLists.flatMap((listDetail) => normalizePrices(listDetail));
+      }
+    }
 
     if (rows.length === 0) {
       const result: SyncResult = {
@@ -263,7 +371,52 @@ export async function runPriceSync(): Promise<SyncResult> {
       entityType: "price_lists",
       status: "error",
       recordsSynced: 0,
-      errorDetail: error instanceof Error ? error.message : "Unknown error",
+      errorDetail: getErrorMessage(error),
+    };
+    await logSync(result);
+    return result;
+  }
+}
+
+export async function runCatalogReplaceSync(): Promise<SyncResult> {
+  try {
+    const productsResult = await runProductSync({ replaceAll: true });
+    if (productsResult.status !== "success") {
+      const result: SyncResult = {
+        entityType: "catalog",
+        status: "error",
+        recordsSynced: productsResult.recordsSynced,
+        errorDetail: productsResult.errorDetail ?? "Error al sincronizar productos",
+      };
+      await logSync(result);
+      return result;
+    }
+
+    const pricesResult = await runPriceSync();
+    if (pricesResult.status !== "success") {
+      const result: SyncResult = {
+        entityType: "catalog",
+        status: "error",
+        recordsSynced: productsResult.recordsSynced + pricesResult.recordsSynced,
+        errorDetail: pricesResult.errorDetail ?? "Error al sincronizar listas de precio",
+      };
+      await logSync(result);
+      return result;
+    }
+
+    const result: SyncResult = {
+      entityType: "catalog",
+      status: "success",
+      recordsSynced: productsResult.recordsSynced + pricesResult.recordsSynced,
+    };
+    await logSync(result);
+    return result;
+  } catch (error) {
+    const result: SyncResult = {
+      entityType: "catalog",
+      status: "error",
+      recordsSynced: 0,
+      errorDetail: getErrorMessage(error),
     };
     await logSync(result);
     return result;

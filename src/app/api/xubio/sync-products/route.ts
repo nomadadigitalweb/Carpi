@@ -4,6 +4,7 @@ import { runProductSync } from "@/lib/xubio-sync";
 
 const allowedRoles = ["admin_carpi", "gestor_financiero", "encargado_ventas"];
 const cronSecret = process.env.CRON_SECRET;
+const adminEmail = "admin@carpi.com";
 
 async function handler(request: Request) {
   const requestSecret = request.headers.get("x-cron-secret") ?? request.headers.get("authorization")?.replace("Bearer ", "");
@@ -21,10 +22,13 @@ async function handler(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
 
-  if (!profile?.role || !allowedRoles.includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const isAdminEmail = user.email?.toLowerCase() === adminEmail;
+  const role = (profile?.role as string | undefined) ?? (isAdminEmail ? "admin_carpi" : undefined);
+
+  if (!role || !allowedRoles.includes(role)) {
+    return NextResponse.json({ error: "Forbidden: necesitas rol staff para sincronizar Xubio" }, { status: 403 });
   }
 
   const result = await runProductSync();

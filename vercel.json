@@ -1,12 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/xubio/sync-products",
+      "path": "/api/xubio/sync-catalog",
       "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/xubio/sync-prices",
-      "schedule": "15 2 * * *"
     },
     {
       "path": "/api/analytics/aggregate",

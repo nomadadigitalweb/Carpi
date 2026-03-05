@@ -4,6 +4,7 @@ import { createXubioInvoice } from "@/lib/xubio";
 import { sendInvoiceEmail } from "@/lib/email";
 
 const allowedRoles = ["admin_carpi", "gestor_financiero", "encargado_ventas", "fabricante"];
+const adminEmail = "admin@carpi.com";
 
 export async function POST(request: Request) {
   const supabase = await createRouteClient();
@@ -16,10 +17,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  const isAdminEmail = user.email?.toLowerCase() === adminEmail;
+  const role = (profile?.role as string | undefined) ?? (isAdminEmail ? "admin_carpi" : undefined);
 
-  if (!profile?.role || !allowedRoles.includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!role || !allowedRoles.includes(role)) {
+    return NextResponse.json({ error: "Forbidden: sin permisos para facturar en Xubio" }, { status: 403 });
   }
 
   const body = (await request.json()) as { orderId?: string };
@@ -39,7 +42,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }
 
-  if (profile.role === "fabricante" && order.fabricante_id !== user.id) {
+  if (role === "fabricante" && order.fabricante_id !== user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

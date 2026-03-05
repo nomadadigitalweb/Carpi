@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 
 type SyncResponse = {
-  entityType: "products" | "price_lists";
+  entityType: "products" | "price_lists" | "catalog";
   status: "success" | "error";
   recordsSynced: number;
   errorDetail?: string;
@@ -11,25 +11,37 @@ type SyncResponse = {
 
 export default function SyncStatusPanel() {
   const [lastResult, setLastResult] = useState<SyncResponse | null>(null);
-  const [pendingType, setPendingType] = useState<"products" | "prices" | null>(null);
+  const [pendingType, setPendingType] = useState<"products" | "prices" | "catalog" | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const runSync = (type: "products" | "prices") => {
+  const runSync = (type: "products" | "prices" | "catalog") => {
     setPendingType(type);
     setLastResult(null);
 
     startTransition(async () => {
       try {
-        const endpoint = type === "products" ? "/api/xubio/sync-products" : "/api/xubio/sync-prices";
+        const endpoint =
+          type === "products"
+            ? "/api/xubio/sync-products"
+            : type === "prices"
+              ? "/api/xubio/sync-prices"
+              : "/api/xubio/sync-catalog";
         const response = await fetch(endpoint, { method: "POST" });
         const data = (await response.json()) as SyncResponse | { error: string };
 
         if (!response.ok) {
+          const resolvedError =
+            "error" in data
+              ? data.error
+              : "errorDetail" in data && typeof data.errorDetail === "string"
+                ? data.errorDetail
+                : "Error de sincronización";
+
           setLastResult({
-            entityType: type === "products" ? "products" : "price_lists",
+            entityType: type === "catalog" ? "catalog" : type === "products" ? "products" : "price_lists",
             status: "error",
             recordsSynced: 0,
-            errorDetail: "error" in data ? data.error : "Error de sincronización",
+            errorDetail: resolvedError,
           });
           return;
         }
@@ -37,7 +49,7 @@ export default function SyncStatusPanel() {
         setLastResult(data as SyncResponse);
       } catch (error) {
         setLastResult({
-          entityType: type === "products" ? "products" : "price_lists",
+          entityType: type === "catalog" ? "catalog" : type === "products" ? "products" : "price_lists",
           status: "error",
           recordsSynced: 0,
           errorDetail: error instanceof Error ? error.message : "Unknown error",
@@ -53,6 +65,7 @@ export default function SyncStatusPanel() {
       <div>
         <h2 className="text-sm font-bold uppercase tracking-wider text-gray-900">Sincronización Xubio</h2>
         <p className="text-xs text-gray-500 mt-1">Actualiza productos y listas de precio en Supabase.</p>
+        <p className="text-xs text-gray-500">También hay sincronización automática diaria por cron.</p>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -70,6 +83,14 @@ export default function SyncStatusPanel() {
           className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold hover:bg-gray-50 disabled:opacity-40"
         >
           {pendingType === "prices" ? "Sincronizando precios..." : "Sync Precios"}
+        </button>
+
+        <button
+          onClick={() => runSync("catalog")}
+          disabled={isPending}
+          className="px-4 py-2 rounded-lg border border-red-300 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40"
+        >
+          {pendingType === "catalog" ? "Reemplazando catálogo..." : "Reemplazar catálogo con Xubio"}
         </button>
       </div>
 

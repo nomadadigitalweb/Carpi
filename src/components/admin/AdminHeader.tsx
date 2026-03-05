@@ -11,6 +11,7 @@ export default function AdminHeader({ userEmail, role }: { userEmail?: string, r
         if (pathname.includes("/stock")) return "Gestión de Inventario";
         if (pathname.includes("/pedidos")) return "Control de Pedidos";
         if (pathname.includes("/sync")) return "Sincronización Xubio";
+        if (pathname.includes("/listas-precio")) return "Listas de Precio";
         return "Panel de Administración";
     };
 

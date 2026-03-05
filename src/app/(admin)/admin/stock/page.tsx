@@ -1,11 +1,33 @@
 "use client";
 
 import { createClient } from "@/utils/supabase/client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Save, AlertCircle, Search, Layers, Package } from "lucide-react";
 import ProductLinesManager from "@/components/admin/ProductLinesManager";
 import ProductFormModal from "@/components/admin/ProductFormModal";
 import { Plus, Edit2 } from "lucide-react";
+
+type ColumnKey = "select" | "sku" | "product" | "category" | "stock" | "price" | "action";
+
+const STOCK_COLUMN_WIDTHS_STORAGE_KEY = "admin-stock-column-widths-v1";
+const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
+    select: 44,
+    sku: 180,
+    product: 420,
+    category: 170,
+    stock: 110,
+    price: 130,
+    action: 90,
+};
+const MIN_COLUMN_WIDTHS: Record<ColumnKey, number> = {
+    select: 36,
+    sku: 110,
+    product: 220,
+    category: 120,
+    stock: 90,
+    price: 100,
+    action: 80,
+};
 
 export default function StockPage() {
     const supabase = createClient();
@@ -14,6 +36,8 @@ export default function StockPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("all");
     const [showLowStock, setShowLowStock] = useState(false);
+    const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS);
+    const resizingRef = useRef<{ key: ColumnKey; startX: number; startWidth: number } | null>(null);
 
     // ... (existing states)
     const [savingId, setSavingId] = useState<string | null>(null);
@@ -39,6 +63,62 @@ export default function StockPage() {
     useEffect(() => {
         fetchProducts();
     }, []);
+
+    useEffect(() => {
+        const raw = window.localStorage.getItem(STOCK_COLUMN_WIDTHS_STORAGE_KEY);
+        if (!raw) return;
+
+        try {
+            const parsed = JSON.parse(raw) as Partial<Record<ColumnKey, number>>;
+            setColumnWidths((prev) => ({ ...prev, ...parsed }));
+        } catch {
+            window.localStorage.removeItem(STOCK_COLUMN_WIDTHS_STORAGE_KEY);
+        }
+    }, []);
+
+    useEffect(() => {
+        window.localStorage.setItem(STOCK_COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(columnWidths));
+    }, [columnWidths]);
+
+    const handleResizeMouseMove = useCallback((event: MouseEvent) => {
+        const resizing = resizingRef.current;
+        if (!resizing) return;
+
+        const delta = event.clientX - resizing.startX;
+        const minWidth = MIN_COLUMN_WIDTHS[resizing.key];
+        const nextWidth = Math.max(minWidth, resizing.startWidth + delta);
+
+        setColumnWidths((prev) => ({
+            ...prev,
+            [resizing.key]: nextWidth,
+        }));
+    }, []);
+
+    const stopResize = useCallback(() => {
+        resizingRef.current = null;
+        window.removeEventListener("mousemove", handleResizeMouseMove);
+        window.removeEventListener("mouseup", stopResize);
+    }, [handleResizeMouseMove]);
+
+    const startResize = (key: ColumnKey) => (event: React.MouseEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        resizingRef.current = {
+            key,
+            startX: event.clientX,
+            startWidth: columnWidths[key],
+        };
+
+        window.addEventListener("mousemove", handleResizeMouseMove);
+        window.addEventListener("mouseup", stopResize);
+    };
+
+    useEffect(() => {
+        return () => {
+            stopResize();
+        };
+    }, [stopResize]);
 
     async function fetchProducts() {
         setLoading(true);
@@ -204,23 +284,63 @@ export default function StockPage() {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full border-collapse">
+                            <table className="w-full border-collapse table-fixed">
                                 <thead>
                                     <tr className="border-b border-gray-200">
-                                        <th className="w-10 py-4 px-4">
+                                        <th className="relative py-4 px-4" style={{ width: columnWidths.select }}>
                                             <input
                                                 type="checkbox"
                                                 className="rounded border-gray-300 text-black focus:ring-black"
                                                 checked={selectedIds.size === filteredProducts.length && filteredProducts.length > 0}
                                                 onChange={toggleSelectAll}
                                             />
+                                            <span
+                                                onMouseDown={startResize("select")}
+                                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
+                                            />
                                         </th>
-                                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold">SKU</th>
-                                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold">Producto</th>
-                                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold">Categoría</th>
-                                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold text-center">Stock</th>
-                                        <th className="text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold text-right">Precio ($)</th>
-                                        <th className="text-center py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold">Acción</th>
+                                        <th className="relative text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold" style={{ width: columnWidths.sku }}>
+                                            SKU
+                                            <span
+                                                onMouseDown={startResize("sku")}
+                                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
+                                            />
+                                        </th>
+                                        <th className="relative text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold" style={{ width: columnWidths.product }}>
+                                            Producto
+                                            <span
+                                                onMouseDown={startResize("product")}
+                                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
+                                            />
+                                        </th>
+                                        <th className="relative text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold" style={{ width: columnWidths.category }}>
+                                            Categoría
+                                            <span
+                                                onMouseDown={startResize("category")}
+                                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
+                                            />
+                                        </th>
+                                        <th className="relative text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold text-center" style={{ width: columnWidths.stock }}>
+                                            Stock
+                                            <span
+                                                onMouseDown={startResize("stock")}
+                                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
+                                            />
+                                        </th>
+                                        <th className="relative text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold text-right" style={{ width: columnWidths.price }}>
+                                            Precio ($)
+                                            <span
+                                                onMouseDown={startResize("price")}
+                                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
+                                            />
+                                        </th>
+                                        <th className="relative text-center py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold" style={{ width: columnWidths.action }}>
+                                            Acción
+                                            <span
+                                                onMouseDown={startResize("action")}
+                                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
+                                            />
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -236,7 +356,7 @@ export default function StockPage() {
                                                         : 'hover:bg-gray-50/50'
                                                     }`}
                                             >
-                                                <td className="py-4 px-4">
+                                                <td className="py-4 px-4" style={{ width: columnWidths.select }}>
                                                     <input
                                                         type="checkbox"
                                                         className="rounded border-gray-300 text-black focus:ring-black"
@@ -244,17 +364,17 @@ export default function StockPage() {
                                                         onChange={() => toggleSelect(p.id)}
                                                     />
                                                 </td>
-                                                <td className="py-4 px-4 text-xs font-mono text-gray-500">{p.sku || '-'}</td>
-                                                <td className="py-4 px-4">
+                                                <td className="py-4 px-4 text-xs font-mono text-gray-500" style={{ width: columnWidths.sku }}>{p.sku || '-'}</td>
+                                                <td className="py-4 px-4" style={{ width: columnWidths.product }}>
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-8 h-8 bg-gray-100 shrink-0">
                                                             {p.image_url && <img src={p.image_url} className="w-full h-full object-cover" />}
                                                         </div>
-                                                        <span className="text-xs font-bold uppercase tracking-tight">{p.name}</span>
+                                                        <span className="text-xs font-bold uppercase tracking-tight truncate block">{p.name}</span>
                                                     </div>
                                                 </td>
-                                                <td className="py-4 px-4 text-[10px] uppercase text-gray-500">{p.category}</td>
-                                                <td className="py-4 px-4">
+                                                <td className="py-4 px-4 text-[10px] uppercase text-gray-500" style={{ width: columnWidths.category }}>{p.category}</td>
+                                                <td className="py-4 px-4" style={{ width: columnWidths.stock }}>
                                                     <input
                                                         type="number"
                                                         className="w-16 mx-auto block text-center bg-transparent border-b border-transparent group-hover:border-gray-300 focus:border-black outline-none text-xs font-medium py-1"
@@ -262,7 +382,7 @@ export default function StockPage() {
                                                         onBlur={(e) => handleUpdate(p.id, { stock: parseInt(e.target.value) })}
                                                     />
                                                 </td>
-                                                <td className="py-4 px-4">
+                                                <td className="py-4 px-4" style={{ width: columnWidths.price }}>
                                                     <input
                                                         type="number"
                                                         className="w-24 ml-auto block text-right bg-transparent border-b border-transparent group-hover:border-gray-300 focus:border-black outline-none text-xs font-medium py-1"
@@ -270,7 +390,7 @@ export default function StockPage() {
                                                         onBlur={(e) => handleUpdate(p.id, { price: parseFloat(e.target.value) })}
                                                     />
                                                 </td>
-                                                <td className="py-4 px-4 text-center">
+                                                <td className="py-4 px-4 text-center" style={{ width: columnWidths.action }}>
                                                     <div className="flex items-center justify-center gap-2">
                                                         <button
                                                             onClick={() => openEditModal(p)}
