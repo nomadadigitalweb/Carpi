@@ -2,15 +2,15 @@
   "crons": [
     {
       "path": "/api/xubio/sync-products",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 2 * * *"
     },
     {
       "path": "/api/xubio/sync-prices",
-      "schedule": "15 */6 * * *"
+      "schedule": "15 2 * * *"
     },
     {
       "path": "/api/analytics/aggregate",
-      "schedule": "30 * * * *"
+      "schedule": "30 2 * * *"
     }
   ]
 }
