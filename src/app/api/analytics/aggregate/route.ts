@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null;
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey);
+}
 
 /**
  * GET /api/analytics/aggregate
@@ -12,6 +18,14 @@ const supabaseAdmin = createClient(
  * Called by Vercel cron or manually.
  */
 export async function GET(request: Request) {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    return NextResponse.json(
+      { error: "Supabase env vars missing" },
+      { status: 500 }
+    );
+  }
+
   // Verify cron secret
   const secret = request.headers.get("x-cron-secret");
   if (secret !== process.env.CRON_SECRET) {

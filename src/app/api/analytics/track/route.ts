@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Use service role for inserting analytics (bypasses RLS)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null;
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey);
+}
 
 function detectDevice(ua: string): string {
   if (/tablet|ipad|playbook|silk/i.test(ua)) return "tablet";
@@ -15,6 +20,14 @@ function detectDevice(ua: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) {
+    return NextResponse.json(
+      { error: "Supabase env vars missing" },
+      { status: 500 }
+    );
+  }
+
   try {
     const body = await request.json();
     const {
