@@ -83,6 +83,7 @@ export default function MyAccountSection() {
       const { data: products } = await supabase
         .from("products")
         .select("id,name,sku,price,stock")
+        .eq("publication_status", "published")
         .order("name", { ascending: true });
 
       const normalizedProducts = (products ?? []).map((product) => ({

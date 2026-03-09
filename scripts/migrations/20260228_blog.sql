@@ -12,6 +12,24 @@ BEGIN
   END IF;
 END$$;
 
+CREATE OR REPLACE FUNCTION public.is_staff_user()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND p.role IN ('admin_carpi', 'encargado_ventas', 'gestor_financiero')
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.is_staff_user() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_staff_user() TO authenticated;
+
 -- 2. Categories table
 CREATE TABLE IF NOT EXISTS public.categories (
   id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -79,35 +97,18 @@ CREATE POLICY "categories_select_public"
 DROP POLICY IF EXISTS "categories_insert_staff" ON public.categories;
 CREATE POLICY "categories_insert_staff"
   ON public.categories FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('admin_carpi','gestor_financiero','encargado_ventas')
-    )
-  );
+  WITH CHECK (public.is_staff_user());
 
 DROP POLICY IF EXISTS "categories_update_staff" ON public.categories;
 CREATE POLICY "categories_update_staff"
   ON public.categories FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('admin_carpi','gestor_financiero','encargado_ventas')
-    )
-  );
+  USING (public.is_staff_user())
+  WITH CHECK (public.is_staff_user());
 
 DROP POLICY IF EXISTS "categories_delete_staff" ON public.categories;
 CREATE POLICY "categories_delete_staff"
   ON public.categories FOR DELETE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('admin_carpi','gestor_financiero','encargado_ventas')
-    )
-  );
+  USING (public.is_staff_user());
 
 -- ============================================================
 -- 6. RLS — Posts
@@ -118,50 +119,26 @@ ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "posts_select_published" ON public.posts;
 CREATE POLICY "posts_select_published"
   ON public.posts FOR SELECT
-  USING (
-    status = 'published'
-    OR EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('admin_carpi','gestor_financiero','encargado_ventas')
-    )
-  );
+  USING (status = 'published' OR public.is_staff_user());
 
 -- Staff can insert
 DROP POLICY IF EXISTS "posts_insert_staff" ON public.posts;
 CREATE POLICY "posts_insert_staff"
   ON public.posts FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('admin_carpi','gestor_financiero','encargado_ventas')
-    )
-  );
+  WITH CHECK (public.is_staff_user());
 
 -- Staff can update
 DROP POLICY IF EXISTS "posts_update_staff" ON public.posts;
 CREATE POLICY "posts_update_staff"
   ON public.posts FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('admin_carpi','gestor_financiero','encargado_ventas')
-    )
-  );
+  USING (public.is_staff_user())
+  WITH CHECK (public.is_staff_user());
 
 -- Staff can delete
 DROP POLICY IF EXISTS "posts_delete_staff" ON public.posts;
 CREATE POLICY "posts_delete_staff"
   ON public.posts FOR DELETE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('admin_carpi','gestor_financiero','encargado_ventas')
-    )
-  );
+  USING (public.is_staff_user());
 
 -- ============================================================
 -- 7. Storage bucket — blog-media
@@ -183,11 +160,7 @@ CREATE POLICY "blog_media_insert_staff"
   ON storage.objects FOR INSERT
   WITH CHECK (
     bucket_id = 'blog-media'
-    AND EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('admin_carpi','gestor_financiero','encargado_ventas')
-    )
+    AND public.is_staff_user()
   );
 
 -- Staff can update (overwrite) in blog-media
@@ -196,11 +169,11 @@ CREATE POLICY "blog_media_update_staff"
   ON storage.objects FOR UPDATE
   USING (
     bucket_id = 'blog-media'
-    AND EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('admin_carpi','gestor_financiero','encargado_ventas')
-    )
+    AND public.is_staff_user()
+  )
+  WITH CHECK (
+    bucket_id = 'blog-media'
+    AND public.is_staff_user()
   );
 
 -- Staff can delete from blog-media
@@ -209,11 +182,7 @@ CREATE POLICY "blog_media_delete_staff"
   ON storage.objects FOR DELETE
   USING (
     bucket_id = 'blog-media'
-    AND EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND role IN ('admin_carpi','gestor_financiero','encargado_ventas')
-    )
+    AND public.is_staff_user()
   );
 
 -- ============================================================

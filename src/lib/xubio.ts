@@ -216,6 +216,15 @@ export async function syncXubioProducts(): Promise<unknown> {
   return xubioRequest<unknown>(productsPath, { method: "GET" });
 }
 
+export async function syncXubioStock(): Promise<unknown | null> {
+  const stockPath = process.env.XUBIO_STOCK_PATH;
+  if (!stockPath) {
+    return null;
+  }
+
+  return xubioRequest<unknown>(stockPath, { method: "GET" });
+}
+
 export async function syncXubioPriceLists(): Promise<unknown> {
   const priceListsPath = process.env.XUBIO_PRICE_LISTS_PATH ?? "https://xubio.com/API/1.1/listaPrecioBean?tipo=1&activo=1";
   return xubioRequest<unknown>(priceListsPath, { method: "GET" });

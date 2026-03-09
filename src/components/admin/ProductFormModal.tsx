@@ -13,6 +13,7 @@ type Product = {
     stock: number;
     category?: string;
     image_url?: string;
+    publication_status: "draft" | "published";
 };
 
 type Props = {
@@ -35,14 +36,18 @@ export default function ProductFormModal({ isOpen, onClose, onSaved, productToEd
         price: 0,
         stock: 0,
         category: "General",
-        image_url: ""
+        image_url: "",
+        publication_status: "published"
     });
 
     useEffect(() => {
         if (isOpen) {
             fetchLines();
             if (productToEdit) {
-                setFormData(productToEdit);
+                setFormData({
+                    ...productToEdit,
+                    publication_status: productToEdit.publication_status ?? "published",
+                });
             } else {
                 setFormData({
                     name: "",
@@ -51,7 +56,8 @@ export default function ProductFormModal({ isOpen, onClose, onSaved, productToEd
                     price: 0,
                     stock: 0,
                     category: "General",
-                    image_url: ""
+                    image_url: "",
+                    publication_status: "published"
                 });
             }
         }
@@ -143,6 +149,18 @@ export default function ProductFormModal({ isOpen, onClose, onSaved, productToEd
                                 {lines.map(l => (
                                     <option key={l.name} value={l.name}>{l.name}</option>
                                 ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">Estado Web</label>
+                            <select
+                                className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm focus:border-black focus:ring-1 focus:ring-black outline-none"
+                                value={formData.publication_status}
+                                onChange={e => setFormData({ ...formData, publication_status: e.target.value as "draft" | "published" })}
+                            >
+                                <option value="published">Publicado</option>
+                                <option value="draft">Borrador</option>
                             </select>
                         </div>
 

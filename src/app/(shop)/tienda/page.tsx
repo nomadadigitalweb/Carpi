@@ -15,6 +15,7 @@ export default async function ShopPage() {
   const { data: products } = await supabase
     .from("products")
     .select("id,name,image_url,stock,category,price")
+    .eq("publication_status", "published")
     .order("name", { ascending: true });
 
   const productIds = (products ?? []).map((product) => product.id);

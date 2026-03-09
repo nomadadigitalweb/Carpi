@@ -7,7 +7,7 @@ import ProductLinesManager from "@/components/admin/ProductLinesManager";
 import ProductFormModal from "@/components/admin/ProductFormModal";
 import { Plus, Edit2 } from "lucide-react";
 
-type ColumnKey = "select" | "sku" | "product" | "category" | "stock" | "price" | "action";
+type ColumnKey = "select" | "sku" | "product" | "category" | "status" | "stock" | "price" | "action";
 
 const STOCK_COLUMN_WIDTHS_STORAGE_KEY = "admin-stock-column-widths-v1";
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
@@ -15,6 +15,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
     sku: 180,
     product: 420,
     category: 170,
+    status: 130,
     stock: 110,
     price: 130,
     action: 90,
@@ -24,6 +25,7 @@ const MIN_COLUMN_WIDTHS: Record<ColumnKey, number> = {
     sku: 110,
     product: 220,
     category: 120,
+    status: 120,
     stock: 90,
     price: 100,
     action: 80,
@@ -33,14 +35,17 @@ export default function StockPage() {
     const supabase = createClient();
     const [products, setProducts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedCategory, setSelectedCategory] = useState("all");
+    const [selectedPublicationStatus, setSelectedPublicationStatus] = useState<"all" | "published" | "draft">("all");
     const [showLowStock, setShowLowStock] = useState(false);
     const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS);
     const resizingRef = useRef<{ key: ColumnKey; startX: number; startWidth: number } | null>(null);
 
     // ... (existing states)
     const [savingId, setSavingId] = useState<string | null>(null);
+    const [updateError, setUpdateError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'products' | 'lines'>('products');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -122,13 +127,19 @@ export default function StockPage() {
 
     async function fetchProducts() {
         setLoading(true);
+        setFetchError(null);
         const { data, error } = await supabase
             .from('products')
             .select('*')
             .order('created_at', { ascending: false });
 
-        if (error) console.error('Error fetching products:', error);
-        else setProducts(data || []);
+        if (error) {
+            console.error('Error fetching products:', error);
+            setFetchError(error.message);
+            setProducts([]);
+        } else {
+            setProducts(data || []);
+        }
         setLoading(false);
     }
 
@@ -139,13 +150,16 @@ export default function StockPage() {
         const matchesSearch = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             p.sku?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
+        const publicationStatus = p.publication_status ?? "published";
+        const matchesPublicationStatus = selectedPublicationStatus === "all" || publicationStatus === selectedPublicationStatus;
         const matchesLowStock = !showLowStock || (p.stock || 0) < 5; // Low stock threshold < 5
 
-        return matchesSearch && matchesCategory && matchesLowStock;
+        return matchesSearch && matchesCategory && matchesPublicationStatus && matchesLowStock;
     });
 
     async function handleUpdate(id: string, updates: any) {
         setSavingId(id);
+        setUpdateError(null);
         const { error } = await supabase
             .from('products')
             .update(updates)
@@ -153,6 +167,8 @@ export default function StockPage() {
 
         if (!error) {
             setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+        } else {
+            setUpdateError(`No se pudo guardar el producto: ${error.message}`);
         }
         setSavingId(null);
     }
@@ -264,6 +280,16 @@ export default function StockPage() {
                                 ))}
                             </select>
 
+                            <select
+                                value={selectedPublicationStatus}
+                                onChange={(e) => setSelectedPublicationStatus(e.target.value as "all" | "published" | "draft")}
+                                className="bg-gray-50 border border-gray-200 rounded-lg text-xs px-4 py-2 outline-none focus:border-black cursor-pointer uppercase font-bold text-gray-600"
+                            >
+                                <option value="all">Todos los estados</option>
+                                <option value="published">Publicados</option>
+                                <option value="draft">Borradores</option>
+                            </select>
+
                             {/* Low Stock Toggle */}
                             <button
                                 onClick={() => setShowLowStock(!showLowStock)}
@@ -278,9 +304,21 @@ export default function StockPage() {
                         </div>
                     </div>
 
+                    {updateError && (
+                        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 font-semibold">
+                            {updateError}
+                        </div>
+                    )}
+
                     {loading ? (
                         <div className="py-12 flex justify-center">
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-black"></div>
+                        </div>
+                    ) : fetchError ? (
+                        <div className="py-12">
+                            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 font-semibold">
+                                Error cargando productos: {fetchError}
+                            </div>
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
@@ -317,6 +355,13 @@ export default function StockPage() {
                                             Categoría
                                             <span
                                                 onMouseDown={startResize("category")}
+                                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
+                                            />
+                                        </th>
+                                        <th className="relative text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold text-center" style={{ width: columnWidths.status }}>
+                                            Estado
+                                            <span
+                                                onMouseDown={startResize("status")}
                                                 className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
                                             />
                                         </th>
@@ -374,6 +419,16 @@ export default function StockPage() {
                                                     </div>
                                                 </td>
                                                 <td className="py-4 px-4 text-[10px] uppercase text-gray-500" style={{ width: columnWidths.category }}>{p.category}</td>
+                                                <td className="py-4 px-4" style={{ width: columnWidths.status }}>
+                                                    <select
+                                                        className="w-full bg-transparent border border-gray-200 rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wide focus:outline-none focus:border-black"
+                                                        value={p.publication_status ?? "published"}
+                                                        onChange={(e) => handleUpdate(p.id, { publication_status: e.target.value })}
+                                                    >
+                                                        <option value="published">Publicado</option>
+                                                        <option value="draft">Borrador</option>
+                                                    </select>
+                                                </td>
                                                 <td className="py-4 px-4" style={{ width: columnWidths.stock }}>
                                                     <input
                                                         type="number"

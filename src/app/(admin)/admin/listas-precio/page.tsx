@@ -2,7 +2,7 @@
 
 import { createClient } from "@/utils/supabase/client";
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, ListFilter, Search } from "lucide-react";
+import { AlertCircle, Search } from "lucide-react";
 
 type ProductRow = {
   id: string;
@@ -18,14 +18,13 @@ type ProductPriceRow = {
   price: number;
 };
 
-type JoinedRow = {
+type ProductComparisonRow = {
   product_id: string;
-  lista_precio_id: number;
-  lista_price: number;
-  base_price: number;
   name: string;
   sku: string;
   category: string;
+  base_price: number;
+  prices_by_list: Map<number, number>;
 };
 
 export default function PriceListsPage() {
@@ -33,8 +32,9 @@ export default function PriceListsPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<JoinedRow[]>([]);
-  const [selectedListId, setSelectedListId] = useState<number | "all">("all");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [rows, setRows] = useState<ProductComparisonRow[]>([]);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -60,45 +60,102 @@ export default function PriceListsPage() {
 
     const productMap = new Map((products as ProductRow[] | null ?? []).map((product) => [product.id, product]));
 
-    const joined = (productPrices as ProductPriceRow[] | null ?? []).map((priceRow) => {
-      const product = productMap.get(priceRow.product_id);
+    const pricesByProduct = new Map<string, Map<number, number>>();
+    for (const row of (productPrices as ProductPriceRow[] | null ?? [])) {
+      if (!pricesByProduct.has(row.product_id)) {
+        pricesByProduct.set(row.product_id, new Map<number, number>());
+      }
+      pricesByProduct.get(row.product_id)?.set(row.lista_precio_id, Number(row.price ?? 0));
+    }
 
-      return {
-        product_id: priceRow.product_id,
-        lista_precio_id: priceRow.lista_precio_id,
-        lista_price: Number(priceRow.price ?? 0),
-        base_price: Number(product?.price ?? 0),
-        name: product?.name ?? "Producto sin nombre",
-        sku: product?.sku ?? "-",
-        category: product?.category ?? "-",
-      } satisfies JoinedRow;
-    });
+    const comparisonRows = Array.from(productMap.values())
+      .map((product) => ({
+        product_id: product.id,
+        name: product.name ?? "Producto sin nombre",
+        sku: product.sku ?? "-",
+        category: product.category ?? "-",
+        base_price: Number(product.price ?? 0),
+        prices_by_list: pricesByProduct.get(product.id) ?? new Map<number, number>(),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "es-AR"));
 
-    setRows(joined);
+    setRows(comparisonRows);
     setLoading(false);
   }
 
+  async function handlePriceChange(productId: string, listaPrecioId: number, value: string) {
+    const normalized = value.trim().replace(",", ".");
+    const parsed = Number(normalized);
+
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setSaveError("Ingresa un precio valido mayor o igual a 0.");
+      return;
+    }
+
+    setSaveError(null);
+    const key = `${productId}-${listaPrecioId}`;
+    setSavingKey(key);
+
+    const { error: upsertError } = await supabase.from("product_prices").upsert(
+      {
+        product_id: productId,
+        lista_precio_id: listaPrecioId,
+        price: parsed,
+        currency: "ARS",
+        manual_override: true,
+      },
+      { onConflict: "product_id,lista_precio_id" }
+    );
+
+    if (upsertError) {
+      setSaveError(`No se pudo guardar el precio: ${upsertError.message}`);
+      setSavingKey(null);
+      return;
+    }
+
+    setRows((prevRows) =>
+      prevRows.map((row) => {
+        if (row.product_id !== productId) return row;
+        const nextMap = new Map(row.prices_by_list);
+        nextMap.set(listaPrecioId, parsed);
+        return { ...row, prices_by_list: nextMap };
+      })
+    );
+
+    setSavingKey(null);
+  }
+
   const listIds = useMemo(() => {
-    return Array.from(new Set(rows.map((row) => row.lista_precio_id))).sort((a, b) => a - b);
+    const ids = new Set<number>();
+    rows.forEach((row) => {
+      row.prices_by_list.forEach((_price, listId) => ids.add(listId));
+    });
+    return Array.from(ids).sort((a, b) => a - b);
   }, [rows]);
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
 
     return rows.filter((row) => {
-      const matchesList = selectedListId === "all" || row.lista_precio_id === selectedListId;
       const matchesSearch =
         term.length === 0 || row.name.toLowerCase().includes(term) || row.sku.toLowerCase().includes(term);
 
-      return matchesList && matchesSearch;
+      return matchesSearch;
     });
-  }, [rows, selectedListId, search]);
+  }, [rows, search]);
 
   const summary = useMemo(() => {
-    const distinctProducts = new Set(filteredRows.map((row) => row.product_id)).size;
+    const distinctProducts = filteredRows.length;
+    const totalValues = filteredRows.reduce((acc, row) => acc + row.prices_by_list.size, 0);
     const avgPrice =
-      filteredRows.length > 0
-        ? filteredRows.reduce((acc, row) => acc + Number(row.lista_price ?? 0), 0) / filteredRows.length
+      totalValues > 0
+        ? filteredRows.reduce((acc, row) => {
+            let sum = acc;
+            row.prices_by_list.forEach((price) => {
+              sum += Number(price ?? 0);
+            });
+            return sum;
+          }, 0) / totalValues
         : 0;
 
     return {
@@ -132,25 +189,6 @@ export default function PriceListsPage() {
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
         <div className="flex flex-col md:flex-row gap-3">
-          <div className="relative md:w-72">
-            <ListFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-            <select
-              value={selectedListId}
-              onChange={(event) => {
-                const value = event.target.value;
-                setSelectedListId(value === "all" ? "all" : Number(value));
-              }}
-              className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-black"
-            >
-              <option value="all">Todas las listas</option>
-              {listIds.map((listId) => (
-                <option key={listId} value={listId}>
-                  Lista {listId}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
@@ -179,39 +217,73 @@ export default function PriceListsPage() {
             <span>{error}</span>
           </div>
         ) : (
-          <div className="overflow-auto border border-gray-200 rounded-lg">
-            <table className="w-full text-sm table-fixed">
+          <>
+            {saveError ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 text-red-700 p-3 text-sm flex items-start gap-2">
+                <AlertCircle size={16} className="mt-0.5" />
+                <span>{saveError}</span>
+              </div>
+            ) : null}
+
+            <div className="overflow-auto border border-gray-200 rounded-lg">
+              <table className="w-full text-sm min-w-[1100px]">
               <thead className="bg-gray-50 text-gray-500 uppercase text-xs tracking-wider">
                 <tr>
-                  <th className="px-4 py-3 text-left w-24">Lista</th>
                   <th className="px-4 py-3 text-left w-56">SKU</th>
                   <th className="px-4 py-3 text-left">Producto</th>
                   <th className="px-4 py-3 text-left w-44">Categoría</th>
-                  <th className="px-4 py-3 text-right w-36">Precio Lista</th>
                   <th className="px-4 py-3 text-right w-36">Precio Base</th>
+                  {listIds.map((listId) => (
+                    <th key={listId} className="px-4 py-3 text-right w-36">
+                      Lista {listId}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {filteredRows.map((row) => (
-                  <tr key={`${row.lista_precio_id}-${row.product_id}`} className="border-t border-gray-100">
-                    <td className="px-4 py-3 font-medium">{row.lista_precio_id}</td>
+                  <tr key={row.product_id} className="border-t border-gray-100">
                     <td className="px-4 py-3 text-gray-600 font-mono truncate" title={row.sku}>{row.sku}</td>
                     <td className="px-4 py-3 text-gray-900 truncate" title={row.name}>{row.name}</td>
                     <td className="px-4 py-3 text-gray-600 truncate" title={row.category}>{row.category}</td>
-                    <td className="px-4 py-3 text-right font-semibold">${row.lista_price.toLocaleString("es-AR")}</td>
                     <td className="px-4 py-3 text-right text-gray-600">${row.base_price.toLocaleString("es-AR")}</td>
+                    {listIds.map((listId) => {
+                      const listPrice = row.prices_by_list.get(listId);
+                      const cellKey = `${row.product_id}-${listId}`;
+                      return (
+                        <td key={`${row.product_id}-${listId}`} className="px-4 py-3 text-right font-semibold">
+                          <div className="flex items-center justify-end gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              defaultValue={listPrice === undefined ? "" : listPrice}
+                              onBlur={(event) => {
+                                if (event.target.value.trim().length === 0) {
+                                  return;
+                                }
+                                void handlePriceChange(row.product_id, listId, event.target.value);
+                              }}
+                              className="w-28 border border-gray-300 rounded px-2 py-1 text-right text-xs font-semibold focus:outline-none focus:border-black"
+                            />
+                            {savingKey === cellKey ? <span className="text-[10px] text-gray-400">Guardando...</span> : null}
+                          </div>
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
                 {filteredRows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-gray-500">
+                    <td colSpan={4 + listIds.length} className="px-4 py-10 text-center text-gray-500">
                       No hay resultados para los filtros seleccionados.
                     </td>
                   </tr>
                 )}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>

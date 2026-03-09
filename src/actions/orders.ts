@@ -74,6 +74,7 @@ export async function createOrderFromCart(lines: CartLine[]) {
   const { data: products } = await supabase
     .from("products")
     .select("id,name,sku")
+    .eq("publication_status", "published")
     .in("id", productIds);
 
   const { data: prices } = await supabase

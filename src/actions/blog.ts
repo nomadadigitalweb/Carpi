@@ -8,6 +8,47 @@ import type { PostFormData, Post, Category } from "@/types/blog";
 
 const STAFF_ROLES = ["admin_carpi", "gestor_financiero", "encargado_ventas"];
 
+type AuthorProfile = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+};
+
+async function hydratePostAuthors(supabase: Awaited<ReturnType<typeof createClient>>, posts: Post[]): Promise<Post[]> {
+  const authorIds = Array.from(new Set(posts.map((post) => post.author_id).filter((id): id is string => Boolean(id))));
+
+  if (authorIds.length === 0) {
+    return posts.map((post) => ({ ...post, author: null }));
+  }
+
+  const { data: authors, error } = await supabase
+    .from("profiles")
+    .select("id,full_name,email")
+    .in("id", authorIds);
+
+  if (error) {
+    // If profiles RLS is misconfigured, avoid crashing the public blog.
+    return posts.map((post) => ({ ...post, author: null }));
+  }
+
+  const authorById = new Map(((authors ?? []) as AuthorProfile[]).map((author) => [author.id, author]));
+
+  return posts.map((post) => {
+    const authorId = post.author_id ?? null;
+    const author = authorId ? authorById.get(authorId) : null;
+
+    return {
+      ...post,
+      author: author
+        ? {
+            full_name: author.full_name,
+            email: author.email,
+          }
+        : null,
+    };
+  });
+}
+
 async function requireStaff() {
   const supabase = await createClient();
   const {
@@ -91,10 +132,7 @@ export async function getPosts(opts?: {
 
   let query = supabase
     .from("posts")
-    .select(
-      "*, category:categories(*), author:profiles!posts_author_id_fkey(full_name, email)",
-      { count: "exact" }
-    )
+    .select("*, category:categories(*)", { count: "exact" })
     .order("created_at", { ascending: false });
 
   if (opts?.status) {
@@ -121,35 +159,39 @@ export async function getPosts(opts?: {
   const { data, error, count } = await query;
   if (error) throw new Error(error.message);
 
-  return { posts: (data ?? []) as Post[], count: count ?? 0 };
+  const hydratedPosts = await hydratePostAuthors(supabase, (data ?? []) as Post[]);
+
+  return { posts: hydratedPosts, count: count ?? 0 };
 }
 
 export async function getPostBySlug(slug: string): Promise<Post | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("posts")
-    .select(
-      "*, category:categories(*), author:profiles!posts_author_id_fkey(full_name, email)"
-    )
+    .select("*, category:categories(*)")
     .eq("slug", slug)
     .single();
 
   if (error && error.code !== "PGRST116") throw new Error(error.message);
-  return (data as Post) ?? null;
+  if (!data) return null;
+
+  const [hydrated] = await hydratePostAuthors(supabase, [data as Post]);
+  return hydrated ?? null;
 }
 
 export async function getPostById(id: string): Promise<Post | null> {
   const { supabase } = await requireStaff();
   const { data, error } = await supabase
     .from("posts")
-    .select(
-      "*, category:categories(*), author:profiles!posts_author_id_fkey(full_name, email)"
-    )
+    .select("*, category:categories(*)")
     .eq("id", id)
     .single();
 
   if (error && error.code !== "PGRST116") throw new Error(error.message);
-  return (data as Post) ?? null;
+  if (!data) return null;
+
+  const [hydrated] = await hydratePostAuthors(supabase, [data as Post]);
+  return hydrated ?? null;
 }
 
 export async function createPost(formData: PostFormData): Promise<Post> {
@@ -189,16 +231,15 @@ export async function createPost(formData: PostFormData): Promise<Post> {
   const { data, error } = await supabase
     .from("posts")
     .insert(insertData)
-    .select(
-      "*, category:categories(*), author:profiles!posts_author_id_fkey(full_name, email)"
-    )
+    .select("*, category:categories(*)")
     .single();
 
   if (error) throw new Error(error.message);
 
   revalidatePath("/admin/blog");
   revalidatePath("/blog");
-  return data as Post;
+  const [hydrated] = await hydratePostAuthors(supabase, [data as Post]);
+  return hydrated;
 }
 
 export async function updatePost(
@@ -253,9 +294,7 @@ export async function updatePost(
     .from("posts")
     .update(updateData)
     .eq("id", id)
-    .select(
-      "*, category:categories(*), author:profiles!posts_author_id_fkey(full_name, email)"
-    )
+    .select("*, category:categories(*)")
     .single();
 
   if (error) throw new Error(error.message);
@@ -263,7 +302,8 @@ export async function updatePost(
   revalidatePath("/admin/blog");
   revalidatePath("/blog");
   revalidatePath(`/blog/${finalSlug}`);
-  return data as Post;
+  const [hydrated] = await hydratePostAuthors(supabase, [data as Post]);
+  return hydrated;
 }
 
 export async function deletePost(id: string): Promise<void> {

@@ -38,27 +38,28 @@ export default async function BlogPage({ searchParams }: Props) {
   const totalPages = Math.ceil(count / POSTS_PER_PAGE);
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white text-black">
       {/* Hero */}
-      <section className="bg-zinc-900 text-white py-16">
-        <div className="max-w-6xl mx-auto px-6">
-          <h1 className="text-4xl font-bold tracking-tight">Blog</h1>
-          <p className="mt-3 text-zinc-400 text-lg max-w-xl">
+      <section className="bg-zinc-900 text-white pt-28 pb-20">
+        <div className="max-w-7xl mx-auto px-6">
+          <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-white/60">Carpi Argentina</p>
+          <h1 className="mt-3 text-4xl md:text-5xl font-extrabold uppercase tracking-tighter">Blog</h1>
+          <p className="mt-4 text-zinc-300 text-lg max-w-2xl leading-relaxed">
             Noticias, novedades y artículos sobre nuestros productos y
             materiales.
           </p>
         </div>
       </section>
 
-      <div className="max-w-6xl mx-auto px-6 py-12">
+      <div className="max-w-7xl mx-auto px-6 py-12 md:py-14">
         {/* Category filters */}
         <div className="flex flex-wrap gap-2 mb-10">
           <Link
             href="/blog"
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors border ${
               !categorySlug
-                ? "bg-zinc-900 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                ? "bg-black text-white border-black"
+                : "text-gray-500 border-gray-200 hover:border-black"
             }`}
           >
             Todos
@@ -67,10 +68,10 @@ export default async function BlogPage({ searchParams }: Props) {
             <Link
               key={cat.id}
               href={`/blog?categoria=${cat.slug}`}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-colors border ${
                 categorySlug === cat.slug
-                  ? "bg-zinc-900 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  ? "bg-black text-white border-black"
+                  : "text-gray-500 border-gray-200 hover:border-black"
               }`}
             >
               {cat.name}
@@ -81,7 +82,7 @@ export default async function BlogPage({ searchParams }: Props) {
         {/* Posts grid */}
         {posts.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-gray-400 text-lg">
+            <p className="text-gray-400 text-sm uppercase tracking-widest font-bold">
               No hay artículos publicados aún.
             </p>
           </div>
