@@ -7,7 +7,7 @@ import ProductLinesManager from "@/components/admin/ProductLinesManager";
 import ProductFormModal from "@/components/admin/ProductFormModal";
 import { Plus, Edit2 } from "lucide-react";
 
-type ColumnKey = "select" | "sku" | "product" | "category" | "status" | "stock" | "price" | "action";
+type ColumnKey = "select" | "sku" | "product" | "category" | "status" | "stock" | "action";
 
 const STOCK_COLUMN_WIDTHS_STORAGE_KEY = "admin-stock-column-widths-v1";
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
@@ -17,7 +17,6 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
     category: 170,
     status: 130,
     stock: 110,
-    price: 130,
     action: 90,
 };
 const MIN_COLUMN_WIDTHS: Record<ColumnKey, number> = {
@@ -27,7 +26,6 @@ const MIN_COLUMN_WIDTHS: Record<ColumnKey, number> = {
     category: 120,
     status: 120,
     stock: 90,
-    price: 100,
     action: 80,
 };
 
@@ -372,13 +370,6 @@ export default function StockPage() {
                                                 className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
                                             />
                                         </th>
-                                        <th className="relative text-left py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold text-right" style={{ width: columnWidths.price }}>
-                                            Precio ($)
-                                            <span
-                                                onMouseDown={startResize("price")}
-                                                className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none hover:bg-gray-200"
-                                            />
-                                        </th>
                                         <th className="relative text-center py-4 px-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold" style={{ width: columnWidths.action }}>
                                             Acción
                                             <span
@@ -435,14 +426,6 @@ export default function StockPage() {
                                                         className="w-16 mx-auto block text-center bg-transparent border-b border-transparent group-hover:border-gray-300 focus:border-black outline-none text-xs font-medium py-1"
                                                         defaultValue={p.stock}
                                                         onBlur={(e) => handleUpdate(p.id, { stock: parseInt(e.target.value) })}
-                                                    />
-                                                </td>
-                                                <td className="py-4 px-4" style={{ width: columnWidths.price }}>
-                                                    <input
-                                                        type="number"
-                                                        className="w-24 ml-auto block text-right bg-transparent border-b border-transparent group-hover:border-gray-300 focus:border-black outline-none text-xs font-medium py-1"
-                                                        defaultValue={p.price}
-                                                        onBlur={(e) => handleUpdate(p.id, { price: parseFloat(e.target.value) })}
                                                     />
                                                 </td>
                                                 <td className="py-4 px-4 text-center" style={{ width: columnWidths.action }}>

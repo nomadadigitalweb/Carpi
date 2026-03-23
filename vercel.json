@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/xubio/sync-stock",
+      "schedule": "0 */2 * * *"
+    },
+    {
       "path": "/api/xubio/sync-catalog",
       "schedule": "0 2 * * *"
     },

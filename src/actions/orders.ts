@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/utils/supabase/server";
 import { createXubioInvoice } from "@/lib/xubio";
-import { sendInvoiceEmail } from "@/lib/email";
+import { sendInternalAlertEmail, sendInvoiceEmail } from "@/lib/email";
 import { CartLine, OrderStatus, ResolvedOrderLine } from "@/types/orders";
 
 type ProfileRow = {
@@ -28,9 +28,9 @@ export async function createOrderFromCart(lines: CartLine[]) {
 
   const { data: myProfile } = await supabase
     .from("profiles")
-    .select("id, role, parent_id, lista_precio_id")
+    .select("id, role, parent_id, lista_precio_id, full_name, email, cuit")
     .eq("id", user.id)
-    .single<Pick<ProfileRow, "id" | "role" | "parent_id" | "lista_precio_id">>();
+    .single<Pick<ProfileRow, "id" | "role" | "parent_id" | "lista_precio_id" | "full_name" | "email" | "cuit">>();
 
   if (!myProfile || !["usuario", "fabricante"].includes(myProfile.role)) {
     throw new Error("Solo usuarios o fabricantes pueden crear pedidos.");
@@ -139,6 +139,100 @@ export async function createOrderFromCart(lines: CartLine[]) {
 
   if (itemsError) {
     throw new Error(itemsError.message);
+  }
+
+  if (isFabricante) {
+    try {
+      const invoice = await createXubioInvoice({
+        orderId: order.id,
+        customer: {
+          name: myProfile.full_name ?? "Fabricante",
+          email: myProfile.email ?? "",
+          cuit: myProfile.cuit,
+        },
+        items: resolvedLines.map((line) => ({
+          description: line.productName,
+          quantity: line.quantity,
+          unitPrice: Number(line.unitPrice),
+        })),
+      });
+
+      await supabase
+        .from("orders")
+        .update({
+          status: "facturado" satisfies OrderStatus,
+          xubio_invoice_id: invoice.id,
+          xubio_cae: invoice.cae,
+          xubio_invoice_pdf_url: invoice.pdf_url,
+          notes: null,
+        })
+        .eq("id", order.id);
+
+      if (myProfile.email) {
+        try {
+          await sendInvoiceEmail({
+            to: myProfile.email,
+            customerName: myProfile.full_name ?? "Fabricante",
+            orderId: order.id,
+            total: Number(total),
+            cae: invoice.cae,
+            pdfUrl: invoice.pdf_url,
+          });
+        } catch (emailError) {
+          await supabase
+            .from("orders")
+            .update({
+              notes: `Factura automática emitida pero email al fabricante falló: ${
+                emailError instanceof Error ? emailError.message : "error desconocido"
+              }`,
+            })
+            .eq("id", order.id);
+
+          try {
+            await sendInternalAlertEmail({
+              subject: `ALERTA: fallo email factura automática pedido ${order.id.slice(0, 8)}`,
+              html: `
+                <div style="font-family: Arial, sans-serif; color: #111;">
+                  <h2>Fallo email de factura automática</h2>
+                  <p><strong>Pedido:</strong> ${order.id}</p>
+                  <p><strong>Fabricante:</strong> ${myProfile.full_name ?? "Sin nombre"}</p>
+                  <p><strong>Email fabricante:</strong> ${myProfile.email ?? "Sin email"}</p>
+                  <p><strong>Error:</strong> ${emailError instanceof Error ? emailError.message : "error desconocido"}</p>
+                </div>
+              `,
+            });
+          } catch {
+            // Best effort alerting only.
+          }
+        }
+      }
+    } catch (invoiceError) {
+      await supabase
+        .from("orders")
+        .update({
+          notes: `Pedido de fabricante creado y aprobado automáticamente, pero no se pudo facturar en Xubio: ${
+            invoiceError instanceof Error ? invoiceError.message : "error desconocido"
+          }`,
+        })
+        .eq("id", order.id);
+
+      try {
+        await sendInternalAlertEmail({
+          subject: `ALERTA: fallo facturación automática pedido ${order.id.slice(0, 8)}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; color: #111;">
+              <h2>Fallo de facturación automática en Xubio</h2>
+              <p><strong>Pedido:</strong> ${order.id}</p>
+              <p><strong>Fabricante:</strong> ${myProfile.full_name ?? "Sin nombre"}</p>
+              <p><strong>Email fabricante:</strong> ${myProfile.email ?? "Sin email"}</p>
+              <p><strong>Error:</strong> ${invoiceError instanceof Error ? invoiceError.message : "error desconocido"}</p>
+            </div>
+          `,
+        });
+      } catch {
+        // Best effort alerting only.
+      }
+    }
   }
 
   revalidatePath("/mi-cuenta");

@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { syncXubioPriceListDetail, syncXubioPriceLists, syncXubioProducts, syncXubioStock } from "@/lib/xubio";
 
 type SyncResult = {
-  entityType: "products" | "price_lists" | "catalog";
+  entityType: "products" | "price_lists" | "stock" | "catalog";
   status: "success" | "error";
   recordsSynced: number;
   errorDetail?: string;
@@ -51,6 +51,7 @@ type ExistingProductRow = {
 type XubioStockRow = {
   product_external_id?: number;
   sku?: string;
+  name?: string;
   stock: number;
 };
 
@@ -181,7 +182,13 @@ function normalizeStockRows(raw: unknown): XubioStockRow[] {
           row.existencia ??
           row.saldo ??
           row.stock_actual ??
-          row.stockActual
+          row.stockActual ??
+          row.stockNegativo ??
+          row.sincronizaStock ??
+          row.sincroniza_stock ??
+          row.stock_negativo ??
+          row.stock_sincronizado ??
+          row.stockSincronizado
       );
 
       if (stock === null) {
@@ -205,13 +212,17 @@ function normalizeStockRows(raw: unknown): XubioStockRow[] {
           (row.producto as Record<string, unknown> | undefined)?.codigo) as string | undefined
       );
 
-      if (!productExternalId && !sku) {
+      const name = typeof row.nombre === "string" ? row.nombre.trim() : 
+                   typeof row.name === "string" ? row.name.trim() : undefined;
+
+      if (!productExternalId && !sku && !name) {
         return null;
       }
 
       return {
         product_external_id: productExternalId ?? undefined,
         sku: sku ?? undefined,
+        name: name ?? undefined,
         stock,
       };
     })
@@ -286,7 +297,16 @@ export async function runProductSync(options: ProductSyncOptions = {}): Promise<
   try {
     const supabase = createAdminClient();
 
-    const [response, stockResponse] = await Promise.all([syncXubioProducts(), syncXubioStock()]);
+    const response = await syncXubioProducts();
+    let stockResponse: unknown | null = null;
+
+    try {
+      stockResponse = await syncXubioStock();
+    } catch {
+      // Keep product sync operational even if tenant lacks stock endpoint.
+      stockResponse = null;
+    }
+
     const products = normalizeProducts(response);
     const stockRows = normalizeStockRows(stockResponse);
 
@@ -599,6 +619,162 @@ export async function runPriceSync(): Promise<SyncResult> {
   } catch (error) {
     const result: SyncResult = {
       entityType: "price_lists",
+      status: "error",
+      recordsSynced: 0,
+      errorDetail: getErrorMessage(error),
+    };
+    await logSync(result);
+    return result;
+  }
+}
+
+export async function runStockSync(): Promise<SyncResult> {
+  try {
+    const supabase = createAdminClient();
+    let stockResponse: unknown | null = null;
+    let usedProductsFallback = false;
+
+    try {
+      stockResponse = await syncXubioStock();
+    } catch {
+      // Some Xubio tenants don't expose a dedicated stock endpoint; fallback to products feed.
+      stockResponse = await syncXubioProducts();
+      usedProductsFallback = true;
+    }
+
+    const stockRows = normalizeStockRows(stockResponse);
+
+    if (stockRows.length === 0) {
+      const rawRows = toArray<Record<string, unknown>>(stockResponse);
+      const stockLikeKeys = new Set<string>();
+
+      for (const row of rawRows.slice(0, 25)) {
+        console.log("[runStockSync] Sample row keys:", Object.keys(row));
+        for (const key of Object.keys(row)) {
+          if (/(stock|exist|saldo|cantidad|disponible|inventario)/i.test(key)) {
+            stockLikeKeys.add(key);
+          }
+        }
+      }
+
+      const result: SyncResult = {
+        entityType: "stock",
+        status: usedProductsFallback ? "error" : "success",
+        recordsSynced: 0,
+        errorDetail: usedProductsFallback
+          ? `Xubio no devolvio cantidades de stock en la respuesta de productos. Claves detectadas: ${
+              Array.from(stockLikeKeys).join(", ") || "ninguna"
+            }. Configura XUBIO_STOCK_PATH con un endpoint de stock valido en tu cuenta.`
+          : undefined,
+      };
+      await logSync(result);
+      return result;
+    }
+
+    const externalIds = Array.from(
+      new Set(stockRows.map((row) => row.product_external_id).filter((value): value is number => typeof value === "number"))
+    );
+    const skus = Array.from(new Set(stockRows.map((row) => row.sku).filter((value): value is string => typeof value === "string")));
+    const names = Array.from(new Set(stockRows.map((row) => row.name).filter((value): value is string => typeof value === "string")));
+
+    let productsByExternal: Array<{ id: string; xubio_product_id: number | null }> = [];
+    let productsBySku: Array<{ id: string; sku: string | null }> = [];
+    let productsByName: Array<{ id: string; name: string | null }> = [];
+
+    if (externalIds.length > 0) {
+      const { data, error } = await supabase.from("products").select("id,xubio_product_id").in("xubio_product_id", externalIds);
+      if (error) throw error;
+      productsByExternal = (data ?? []) as Array<{ id: string; xubio_product_id: number | null }>;
+    }
+
+    if (skus.length > 0) {
+      const { data, error } = await supabase.from("products").select("id,sku").in("sku", skus);
+      if (error) throw error;
+      productsBySku = (data ?? []) as Array<{ id: string; sku: string | null }>;
+    }
+
+    if (names.length > 0) {
+      const { data, error } = await supabase.from("products").select("id,name").in("name", names);
+      if (error) throw error;
+      productsByName = (data ?? []) as Array<{ id: string; name: string | null }>;
+    }
+
+    const productIdByExternal = new Map<number, string>();
+    for (const product of productsByExternal) {
+      if (typeof product.xubio_product_id === "number") {
+        productIdByExternal.set(product.xubio_product_id, product.id);
+      }
+    }
+
+    const productIdBySku = new Map<string, string>();
+    for (const product of productsBySku) {
+      const normalized = normalizeSku(product.sku);
+      if (normalized) {
+        productIdBySku.set(normalized, product.id);
+      }
+    }
+
+    const productIdByName = new Map<string, string>();
+    for (const product of productsByName) {
+      const normalized = product.name ? product.name.trim().toLowerCase() : null;
+      if (normalized) {
+        productIdByName.set(normalized, product.id);
+      }
+    }
+
+    const updatesByProductId = new Map<string, number>();
+    for (const row of stockRows) {
+      const resolvedProductId =
+        (typeof row.product_external_id === "number" ? productIdByExternal.get(row.product_external_id) : undefined) ??
+        (row.sku ? productIdBySku.get(row.sku) : undefined) ??
+        (row.name ? productIdByName.get(row.name.trim().toLowerCase()) : undefined);
+
+      if (!resolvedProductId) {
+        continue;
+      }
+
+      updatesByProductId.set(resolvedProductId, Math.max(0, Math.floor(row.stock)));
+    }
+
+    if (updatesByProductId.size === 0) {
+      const result: SyncResult = {
+        entityType: "stock",
+        status: "success",
+        recordsSynced: 0,
+      };
+      await logSync(result);
+      return result;
+    }
+
+    const now = new Date().toISOString();
+    const updates = Array.from(updatesByProductId.entries()).map(([id, stock]) => ({
+      id,
+      stock,
+      updated_at: now,
+    }));
+
+    // Update only stock field without modifying other fields
+    for (const update of updates) {
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({ stock: update.stock, updated_at: update.updated_at })
+        .eq('id', update.id);
+      if (updateError) {
+        console.error("[runStockSync] Update error for product", update.id, ":", updateError);
+        throw updateError;
+      }
+    }
+
+    const result: SyncResult = {
+      entityType: "stock",
+      status: "success",
+      recordsSynced: updates.length,
+    };
+    await logSync(result);
+    return result;
+  } catch (error) {
+    const result: SyncResult = {
+      entityType: "stock",
       status: "error",
       recordsSynced: 0,
       errorDetail: getErrorMessage(error),

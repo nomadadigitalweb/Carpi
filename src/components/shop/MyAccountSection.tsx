@@ -168,6 +168,25 @@ export default function MyAccountSection() {
     fetchOrders();
   }, [fetchOrders]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      fetchOrders();
+    }, 15000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchOrders();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [fetchOrders]);
+
   const productSuggestions = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return [];

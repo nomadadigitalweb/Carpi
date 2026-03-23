@@ -16,6 +16,12 @@ type Product = {
     publication_status: "draft" | "published";
 };
 
+type PriceRow = {
+    lista_precio_id: number;
+    price: number;
+    manual_override: boolean | null;
+};
+
 type Props = {
     isOpen: boolean;
     onClose: () => void;
@@ -27,6 +33,8 @@ export default function ProductFormModal({ isOpen, onClose, onSaved, productToEd
     const supabase = createClient();
     const [loading, setLoading] = useState(false);
     const [lines, setLines] = useState<{ name: string }[]>([]);
+    const [prices, setPrices] = useState<PriceRow[]>([]);
+    const [savingPriceKey, setSavingPriceKey] = useState<number | null>(null);
 
     // Form State
     const [formData, setFormData] = useState<Product>({
@@ -48,6 +56,9 @@ export default function ProductFormModal({ isOpen, onClose, onSaved, productToEd
                     ...productToEdit,
                     publication_status: productToEdit.publication_status ?? "published",
                 });
+                if (productToEdit.id) {
+                    fetchPrices(productToEdit.id);
+                }
             } else {
                 setFormData({
                     name: "",
@@ -59,6 +70,7 @@ export default function ProductFormModal({ isOpen, onClose, onSaved, productToEd
                     image_url: "",
                     publication_status: "published"
                 });
+                setPrices([]);
             }
         }
     }, [isOpen, productToEdit]);
@@ -66,6 +78,26 @@ export default function ProductFormModal({ isOpen, onClose, onSaved, productToEd
     async function fetchLines() {
         const { data } = await supabase.from('product_lines').select('name').order('name');
         if (data) setLines(data);
+    }
+
+    async function fetchPrices(productId: string) {
+        const { data } = await supabase
+            .from('product_prices')
+            .select('lista_precio_id,price,manual_override')
+            .eq('product_id', productId)
+            .order('lista_precio_id', { ascending: true });
+        if (data) setPrices(data as PriceRow[]);
+    }
+
+    async function handleSavePrice(listaId: number, newPrice: number) {
+        if (!productToEdit?.id) return;
+        setSavingPriceKey(listaId);
+        await supabase.from('product_prices').upsert(
+            { product_id: productToEdit.id, lista_precio_id: listaId, price: newPrice, currency: 'ARS', manual_override: true },
+            { onConflict: 'product_id,lista_precio_id' }
+        );
+        await fetchPrices(productToEdit.id);
+        setSavingPriceKey(null);
     }
 
     async function handleSubmit(e: React.FormEvent) {
@@ -162,20 +194,6 @@ export default function ProductFormModal({ isOpen, onClose, onSaved, productToEd
                                 <option value="published">Publicado</option>
                                 <option value="draft">Borrador</option>
                             </select>
-                        </div>
-
-                        {/* Price */}
-                        <div>
-                            <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">Precio ($)</label>
-                            <input
-                                required
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                className="w-full bg-gray-50 border border-gray-200 rounded px-3 py-2 text-sm focus:border-black focus:ring-1 focus:ring-black outline-none"
-                                value={formData.price}
-                                onChange={e => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                            />
                         </div>
 
                         {/* Stock */}
@@ -278,6 +296,48 @@ export default function ProductFormModal({ isOpen, onClose, onSaved, productToEd
                             />
                         </div>
                     </div>
+
+                    {/* Prices per list — only shown when editing */}
+                    {productToEdit?.id && (
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+                                <h3 className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Precios por Lista</h3>
+                            </div>
+                            {prices.length === 0 ? (
+                                <p className="px-4 py-3 text-xs text-gray-400 italic">Sin listas de precio sincronizadas.</p>
+                            ) : (
+                                <div className="divide-y divide-gray-100">
+                                    {prices.map((row) => (
+                                        <div key={row.lista_precio_id} className="flex items-center px-4 py-2.5 gap-3 hover:bg-gray-50 transition-colors">
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 w-28 shrink-0">
+                                                Lista {row.lista_precio_id}
+                                            </span>
+                                            <div className="flex items-center gap-1 flex-1 min-w-0">
+                                                <span className="text-xs text-gray-400 shrink-0">$</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    defaultValue={row.price}
+                                                    key={`${row.lista_precio_id}-${row.price}`}
+                                                    onBlur={(e) => handleSavePrice(row.lista_precio_id, parseFloat(e.target.value) || 0)}
+                                                    className="w-full bg-transparent text-sm font-semibold text-gray-800 outline-none border-b border-transparent focus:border-gray-400"
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                {row.manual_override && (
+                                                    <span className="text-[9px] font-bold uppercase tracking-widest text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded">Manual</span>
+                                                )}
+                                                {savingPriceKey === row.lista_precio_id && (
+                                                    <Loader2 size={12} className="animate-spin text-gray-400" />
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div className="flex justify-end pt-4 border-t border-gray-100">
                         <button

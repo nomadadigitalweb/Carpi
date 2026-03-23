@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Truck, Package, Clock, CheckCircle, Search, Save } from "lucide-react";
 
 const ORDER_STATUS_OPTIONS = [
@@ -33,11 +33,7 @@ export default function OrdersPage() {
     const [updatingShippingId, setUpdatingShippingId] = useState<string | null>(null);
     const [invoicingId, setInvoicingId] = useState<string | null>(null);
 
-    useEffect(() => {
-        fetchOrders();
-    }, []);
-
-    async function fetchOrders() {
+    const fetchOrders = useCallback(async () => {
         setLoading(true);
         const response = await fetch('/api/admin/orders', { cache: 'no-store' });
         const payload = (await response.json()) as { orders?: any[]; error?: string };
@@ -49,7 +45,30 @@ export default function OrdersPage() {
             console.error(payload.error ?? 'No se pudieron cargar pedidos');
         }
         setLoading(false);
-    }
+    }, []);
+
+    useEffect(() => {
+        fetchOrders();
+    }, [fetchOrders]);
+
+    useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            fetchOrders();
+        }, 15000);
+
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                fetchOrders();
+            }
+        };
+
+        document.addEventListener('visibilitychange', onVisibilityChange);
+
+        return () => {
+            window.clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
+    }, [fetchOrders]);
 
     async function handleUpdateTracking(id: string, tracking_number: string) {
         setUpdatingId(id);
@@ -64,7 +83,7 @@ export default function OrdersPage() {
         const payload = (await response.json()) as { ok?: boolean; error?: string };
 
         if (response.ok && payload.ok) {
-            setOrders(prev => prev.map(o => o.id === id ? { ...o, tracking_number, status_envio: 'despachado' } : o));
+            await fetchOrders();
         } else {
             alert(payload.error ?? 'No se pudo actualizar tracking');
         }
@@ -84,7 +103,7 @@ export default function OrdersPage() {
         const payload = (await response.json()) as { ok?: boolean; error?: string };
 
         if (response.ok && payload.ok) {
-            setOrders(prev => prev.map(o => o.id === id ? { ...o, status_envio } : o));
+            await fetchOrders();
         } else {
             alert(payload.error ?? 'No se pudo actualizar estado de envío');
         }
@@ -106,7 +125,7 @@ export default function OrdersPage() {
         const payload = (await response.json()) as { ok?: boolean; error?: string };
 
         if (response.ok && payload.ok) {
-            setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+            await fetchOrders();
         } else {
             alert(payload.error ?? 'No se pudo actualizar el estado');
         }
@@ -124,7 +143,7 @@ export default function OrdersPage() {
         const payload = (await response.json()) as { ok?: boolean; error?: string };
 
         if (response.ok && payload.ok) {
-            setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'facturado' } : o));
+            await fetchOrders();
             alert('Factura emitida en Xubio y email enviado al fabricante con datos bancarios.');
         } else {
             alert(shortErrorMessage(payload.error, 'No se pudo emitir la factura'));
